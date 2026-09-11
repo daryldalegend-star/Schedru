@@ -30,6 +30,14 @@ extract events; you just can't write them to a calendar.
 (Windows). First run installs everything and creates `.env` for your API
 key. Run it again after pasting the key in.
 
+You need Python 3.11+ installed first — get it from
+[python.org/downloads](https://www.python.org/downloads/). **On Windows,
+tick "Add python.exe to PATH"** on the installer's first screen. If the
+launcher says Python wasn't found even though you installed it, Windows'
+Microsoft Store shortcut is shadowing it: turn off `python.exe` and
+`python3.exe` under Settings → Apps → Advanced app settings → App
+execution aliases.
+
 **The manual way:**
 
 ```
@@ -70,14 +78,20 @@ Every event created carries `extendedProperties.private.created_by =
 
 ## What's verified, and what isn't
 
-57 automated tests cover the schema, the RRULE builder (including the DST
-boundary), event-body construction, the confirmation UI, and the full
-parse → confirm → write path with the Anthropic and Google calls faked.
+68 automated tests cover the schema, the RRULE builder (including the DST
+boundary), event-body construction, the confirmation UI, first-run setup,
+and the full parse → confirm → write path with the Anthropic and Google
+calls faked.
 
 **Never exercised against the real services**: the browser OAuth round-trip
 and an actual write landing on a real Google calendar. Those need your
 credentials, so the first real run is the first real test. Start with
 `auth --test-event` before trusting it with a full syllabus.
+
+**`start.bat` has never been run on Windows** — this was built on Linux,
+where no `cmd.exe` exists. That's why setup logic lives in `bootstrap.py`
+(tested) rather than in the launchers, leaving the batch file doing only
+"find a working Python, run that file".
 
 ## What to check on a first real run
 

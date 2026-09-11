@@ -1,66 +1,52 @@
 @echo off
 REM Double-click this on Windows.
-REM Sets up the virtualenv on first run, then launches syllabus_cal.
+REM Finds a working Python, then hands off to bootstrap.py.
 
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo === syllabus_cal ===
 echo.
 
-where python >nul 2>nul
-if errorlevel 1 (
-    echo Python isn't installed.
-    echo Get it from https://www.python.org/downloads/ then run this again.
-    echo Tick "Add Python to PATH" in the installer.
-    echo.
-    pause
-    exit /b 1
-)
+REM `where python` is NOT good enough here. Windows ships stub python.exe and
+REM python3.exe "App Execution Aliases" that sit on PATH but only print
+REM "Python was not found" and point at the Microsoft Store. So actually run
+REM the interpreter and require the output to start with "Python 3". The py
+REM launcher is tried first because the stubs don't shadow it.
 
-if not exist ".venv" (
-    echo First run - setting up. This takes a minute.
-    python -m venv .venv
-    if errorlevel 1 goto setupfail
-    .venv\Scripts\python.exe -m pip install --quiet --upgrade pip
-    .venv\Scripts\python.exe -m pip install --quiet -r requirements.txt
-    if errorlevel 1 goto setupfail
-    echo Setup done.
-    echo.
-)
+set "PYCMD="
+set "PYOUT="
 
-if not exist ".env" (
-    copy .env.example .env >nul
-    echo Created .env - open it in Notepad and paste your Anthropic API key
-    echo after ANTHROPIC_API_KEY= , then run this again.
-    echo.
-    pause
-    exit /b 1
-)
+for /f "usebackq delims=" %%v in (`py -3 --version 2^>^&1`) do set "PYOUT=%%v"
+echo !PYOUT! | findstr /b /c:"Python 3" >nul 2>nul
+if not errorlevel 1 set "PYCMD=py -3"
+if defined PYCMD goto run
 
-findstr /r "ANTHROPIC_API_KEY=." .env >nul
-if errorlevel 1 (
-    echo Your .env has no Anthropic API key yet.
-    echo Open .env, paste your key after ANTHROPIC_API_KEY= , then run this again.
-    echo.
-    pause
-    exit /b 1
-)
+for /f "usebackq delims=" %%v in (`python --version 2^>^&1`) do set "PYOUT=%%v"
+echo !PYOUT! | findstr /b /c:"Python 3" >nul 2>nul
+if not errorlevel 1 set "PYCMD=python"
+if defined PYCMD goto run
 
-if "%~1"=="" (
-    .venv\Scripts\python.exe -m syllabus_cal
-    echo.
-    echo To read a screenshot, type this then drag the image onto this window:
-    echo     start.bat parse
-) else (
-    .venv\Scripts\python.exe -m syllabus_cal %*
-)
-
+echo Python 3 isn't installed, or Windows is intercepting it.
 echo.
-pause
-exit /b 0
-
-:setupfail
-echo Setup failed. Check your internet connection and try again.
+echo Install it from:  https://www.python.org/downloads/
+echo.
+echo IMPORTANT: on the first screen of the installer, tick the box
+echo    "Add python.exe to PATH"
+echo at the bottom before clicking "Install Now". Then run this again.
+echo.
+echo If you already installed Python and still see this, Windows' Microsoft
+echo Store shortcut is shadowing it. Turn that off here:
+echo    Settings ^> Apps ^> Advanced app settings ^> App execution aliases
+echo then switch OFF both "python.exe" and "python3.exe", and run this again.
 echo.
 pause
 exit /b 1
+
+:run
+echo Using !PYOUT!
+echo.
+!PYCMD! bootstrap.py %*
+echo.
+pause
+exit /b 0
