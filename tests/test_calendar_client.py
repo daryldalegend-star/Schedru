@@ -1,6 +1,12 @@
-from datetime import date, time
+from datetime import date, time, timedelta
+from unittest.mock import MagicMock
 
-from syllabus_cal.calendar_client import CREATED_BY_MARKER, build_event_body
+from syllabus_cal.calendar_client import (
+    CREATED_BY_MARKER,
+    build_event_body,
+    create_event,
+    create_hardcoded_test_event,
+)
 from syllabus_cal.rrule import TIMEZONE
 from syllabus_cal.schema import ExtractedEvent, RecurrenceRule
 
@@ -97,3 +103,54 @@ def test_every_event_gets_the_marker_for_bulk_delete():
     )
     body = build_event_body(event)
     assert body["extendedProperties"]["private"]["created_by"] == "syllabus_cal"
+
+
+# The write path, against a fake Calendar service. These don't prove Google
+# accepts the request -- only a real signed-in run does that -- but they do
+# pin down that we call the right method with the right arguments.
+
+
+def test_create_event_inserts_into_primary_calendar_and_executes():
+    service = MagicMock()
+    body = {"summary": "Problem Set 3"}
+
+    create_event(service, body)
+
+    service.events.return_value.insert.assert_called_once_with(
+        calendarId="primary", body=body
+    )
+    service.events.return_value.insert.return_value.execute.assert_called_once()
+
+
+def test_create_event_honors_a_non_primary_calendar_id():
+    service = MagicMock()
+    create_event(service, {"summary": "x"}, calendar_id="school@group.calendar.google.com")
+
+    service.events.return_value.insert.assert_called_once_with(
+        calendarId="school@group.calendar.google.com", body={"summary": "x"}
+    )
+
+
+def test_create_event_returns_the_api_response():
+    service = MagicMock()
+    service.events.return_value.insert.return_value.execute.return_value = {
+        "htmlLink": "https://calendar.google.com/event?eid=abc"
+    }
+
+    created = create_event(service, {"summary": "x"})
+
+    assert created["htmlLink"] == "https://calendar.google.com/event?eid=abc"
+
+
+def test_hardcoded_test_event_is_tomorrow_9_to_930_with_marker():
+    service = MagicMock()
+
+    create_hardcoded_test_event(service)
+
+    body = service.events.return_value.insert.call_args.kwargs["body"]
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+
+    assert body["start"] == {"dateTime": f"{tomorrow}T09:00:00", "timeZone": TIMEZONE}
+    assert body["end"] == {"dateTime": f"{tomorrow}T09:30:00", "timeZone": TIMEZONE}
+    assert body["extendedProperties"]["private"] == CREATED_BY_MARKER
+    assert "recurrence" not in body

@@ -25,38 +25,59 @@ to talk to your Calendar.
 2. In the search bar, type `Google Calendar API` and click the result.
 3. Click the blue **Enable** button.
 
-## 3. Configure the OAuth consent screen
+## 3. Configure the consent screen ("Google Auth Platform")
 
 This is the screen your own browser will show you when you sign in — Google
 requires every app to declare one, even one only you will ever use.
 
-1. Left sidebar: **APIs & Services → OAuth consent screen**.
-2. **User Type**: choose **External** (the only option unless you have a
-   Google Workspace org), then **Create**.
-3. **App information**:
-   - App name: anything, e.g. `syllabus_cal`
-   - User support email: your email
-   - Scroll down to Developer contact information: your email again
-   - Click **Save and Continue**
-4. **Scopes** page: don't add anything here — the app requests the specific
-   Calendar scope directly from the code. Click **Save and Continue**.
-5. **Test users** page: click **+ Add Users**, enter your own Gmail address,
-   click **Add**, then **Save and Continue**.
-6. **Summary** page: click **Back to Dashboard**.
-7. Important: leave the app in **Testing** mode. Do **not** click "Publish
-   App" — that triggers a Google verification review meant for public apps,
-   which you don't need and don't want for a personal tool. Testing mode
-   works indefinitely for accounts you've added as test users.
+> **Heads up on menu names.** Google renamed this area from "OAuth consent
+> screen" to **Google Auth Platform**, and replaced the old multi-page
+> "Save and Continue" wizard with a **Get started** flow plus permanent
+> sub-pages (**Overview**, **Branding**, **Audience**, **Clients**,
+> **Data Access**). Rollouts have been uneven, so if your console still
+> shows the older layout, the old equivalents are noted below. The
+> substance is identical either way: name the app, set it to External, add
+> yourself as a test user, stay in Testing.
+>
+> Also: this section only appears once you've enabled an API — which is why
+> step 2 comes first. If you don't see it, go back and enable the Calendar
+> API.
+
+1. Left sidebar: **APIs & Services → OAuth consent screen**. This will land
+   you on **Google Auth Platform**.
+2. Click **Get started** (first time only).
+3. **App Information** — App name: anything, e.g. `syllabus_cal`. User
+   support email: pick your own address from the dropdown. **Next**.
+4. **Audience** — choose **External**. (Internal only exists if you have a
+   Google Workspace organization; a personal Gmail account won't see it.)
+   **Next**.
+5. **Contact Information** — your email again. **Next**.
+6. Agree to the user data policy checkbox, then **Create**.
+7. Now add yourself as a test user: go to the **Audience** page in the left
+   sidebar, find the **Test users** section, click **+ Add users**, enter
+   your own Gmail address, and **Save**.
+   *(Old UI: this was a "Test users" step inside the setup wizard.)*
+8. Important: leave **Publishing status** as **Testing**. Do **not** click
+   "Publish app" — that triggers a Google verification review meant for
+   public apps, which you don't need and don't want for a personal tool.
+   Testing mode works indefinitely for accounts on the test users list.
+
+You do **not** need to touch the **Data Access** page (old UI: "Scopes").
+The app requests the Calendar scope directly from the code.
 
 ## 4. Create OAuth Desktop App credentials
 
-1. Left sidebar: **APIs & Services → Credentials**.
-2. Click **+ Create Credentials** (top of page) → **OAuth client ID**.
-3. **Application type**: select **Desktop app** (not "Web application" —
-   this matters, it changes what redirect flow is allowed).
+1. Left sidebar: **Google Auth Platform → Clients**.
+   *(Old UI: **APIs & Services → Credentials**.)*
+2. Click **+ Create client**.
+   *(Old UI: **+ Create Credentials → OAuth client ID**.)*
+3. **Application type**: select **Desktop app**. This matters — picking
+   "Web application" gives you a client that expects a hosted redirect URL
+   and the local sign-in flow will fail.
 4. **Name**: anything, e.g. `syllabus_cal CLI`.
 5. Click **Create**. A dialog pops up showing your client ID/secret.
-6. Click **Download JSON**.
+6. Click **Download JSON** (also available later via the ⬇ download icon
+   next to the client in the list).
 7. Rename the downloaded file to exactly `credentials.json` and move it into
    the project root — the same folder as `requirements.txt`. It's already
    listed in `.gitignore`, so it won't get committed.
@@ -89,7 +110,8 @@ delete — safe to remove once you've confirmed it showed up.
 
 **"Access blocked: syllabus_cal has not completed the Google verification
 process"** — Your Google account isn't in the test users list. Go back to
-step 3.5 and add your email under **OAuth consent screen → Test users**.
+step 3.7 and add your email under **Google Auth Platform → Audience → Test
+users**.
 
 **"Error 400: invalid_request" or "invalid_client"** — Usually means
 `credentials.json` is missing/wrong, or wasn't created as a **Desktop app**
