@@ -1,7 +1,12 @@
-"""CLI entry point: python -m syllabus_cal <parse|auth> ...
+"""CLI entry point: python -m syllabus_cal [parse|auth] ...
 
-Stage 1 of the build: only `parse --dry-run` is wired up (image -> validated JSON,
-printed as a table). `auth` and calendar writing land in later steps.
+Running with no subcommand shows a short tutorial and, if you're not signed
+in to Google yet, offers to run the sign-in flow right there.
+
+Build status: `parse --dry-run` (image -> validated JSON) and `auth`
+(Google sign-in, optionally writing one test event) are both live. Writing
+real extracted events to Calendar needs the confirmation UI and end-to-end
+wiring, which are later build steps.
 """
 
 from __future__ import annotations
@@ -14,12 +19,34 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from .schema import CONFIDENCE_REVIEW_THRESHOLD, ExtractionResult
 
 console = Console()
 err_console = Console(stderr=True)
+
+TUTORIAL_TEXT = """[bold]syllabus_cal[/bold] turns a screenshot of a syllabus, club flyer, or \
+schedule email into Google Calendar events.
+
+The intended flow:
+  1. [bold]parse[/bold] an image -- Claude reads it and extracts every dated commitment
+  2. you review what it found (anything uncertain is flagged, never guessed)
+  3. confirmed events get written to your Google Calendar
+
+[bold]Commands available right now:[/bold]
+  [cyan]python -m syllabus_cal parse <image> --dry-run[/cyan]
+      Extract events from a screenshot and print them. Never touches Calendar.
+      Add --semester-start/--semester-end (YYYY-MM-DD) to help resolve recurring
+      "until" dates.
+
+  [cyan]python -m syllabus_cal auth[/cyan]
+      Sign in with your Google account (opens a browser). Needed before Calendar
+      writing will work. See SETUP.md if you haven't created credentials.json yet.
+
+[bold]Still being built:[/bold] reviewing/editing each event before it's written, and
+writing to Calendar itself. Until then, --dry-run is the way to try it."""
 
 
 def _parse_date(value: str) -> date:
@@ -33,7 +60,7 @@ def _parse_date(value: str) -> date:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="syllabus_cal")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command")
 
     parse_cmd = subparsers.add_parser("parse", help="Extract events from a screenshot")
     parse_cmd.add_argument("image", type=Path, help="Path to the screenshot image")
@@ -49,7 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--semester-end", type=_parse_date, default=None, metavar="YYYY-MM-DD"
     )
 
-    subparsers.add_parser("auth", help="Run the Google Calendar OAuth flow")
+    auth_cmd = subparsers.add_parser("auth", help="Run the Google Calendar OAuth flow")
+    auth_cmd.add_argument(
+        "--test-event",
+        action="store_true",
+        help="After signing in, write one hardcoded test event to confirm write access",
+    )
 
     return parser
 
@@ -109,8 +141,8 @@ def _render_events_table(result: ExtractionResult) -> None:
 def cmd_parse(args: argparse.Namespace) -> int:
     if not args.dry_run:
         err_console.print(
-            "[red]Only --dry-run is implemented so far (writing to Calendar is a later "
-            "build step). Re-run with --dry-run.[/red]"
+            "[red]Writing to Calendar isn't wired up yet (it needs the confirmation UI, "
+            "a later build step). Re-run with --dry-run.[/red]"
         )
         return 2
 
@@ -149,17 +181,67 @@ def cmd_parse(args: argparse.Namespace) -> int:
 
 
 def cmd_auth(args: argparse.Namespace) -> int:
-    err_console.print(
-        "[yellow]Google Calendar auth isn't wired up yet — that lands in a later build "
-        "step.[/yellow]"
+    from .calendar_client import AuthError, create_hardcoded_test_event, get_calendar_service, run_auth_flow
+
+    console.print("Opening your browser to sign in with Google...")
+    try:
+        run_auth_flow()
+    except AuthError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        return 1
+
+    console.print("[green]Signed in. token.json saved to the project root.[/green]")
+
+    if getattr(args, "test_event", False):
+        try:
+            service = get_calendar_service()
+            created = create_hardcoded_test_event(service)
+        except AuthError as exc:
+            err_console.print(f"[red]{exc}[/red]")
+            return 1
+        except Exception as exc:  # googleapiclient.errors.HttpError, network errors, etc.
+            err_console.print(f"[red]Signed in, but writing the test event failed: {exc}[/red]")
+            return 1
+
+        link = created.get("htmlLink", "(no link returned)")
+        console.print(f"[green]Test event created:[/green] {link}")
+        console.print("It's tomorrow at 9:00-9:30 AM, tagged as syllabus_cal test data. Safe to delete.")
+
+    return 0
+
+
+def cmd_tutorial(args: argparse.Namespace) -> int:
+    from .calendar_client import is_authenticated
+
+    console.print(Panel(TUTORIAL_TEXT, title="syllabus_cal", border_style="cyan", expand=False))
+
+    if is_authenticated():
+        console.print("\n[green]You're already signed in to Google.[/green]")
+        return 0
+
+    console.print(
+        "\n[yellow]You're not signed in to Google yet.[/yellow] (--dry-run parsing works "
+        "either way; signing in is only needed for the eventual Calendar writing.)"
     )
-    return 1
+    try:
+        answer = console.input("Sign in with Google now? (y/N) ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        console.print()
+        answer = "n"
+
+    if answer == "y":
+        return cmd_auth(argparse.Namespace(test_event=False))
+
+    console.print("No problem — run [bold]python -m syllabus_cal auth[/bold] whenever you're ready.")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.command is None:
+        return cmd_tutorial(args)
     if args.command == "parse":
         return cmd_parse(args)
     if args.command == "auth":

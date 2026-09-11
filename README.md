@@ -5,21 +5,27 @@ club flyer, or schedule email; it extracts every dated commitment, shows you
 what it found, and (once later build steps land) writes confirmed events to
 your Google Calendar.
 
-## Status: Step 1 of 5
+## Status: Step 3 of 5
 
-Only the image → validated JSON pipeline is built and testable right now:
+Running `python -m syllabus_cal` with no arguments shows a short tutorial
+and, if you're not signed in yet, offers to run Google sign-in right there.
+
+What's live:
 
 ```
-python -m syllabus_cal parse ./screenshot.png --dry-run
+python -m syllabus_cal parse ./screenshot.png --dry-run   # step 1: image -> validated JSON
+python -m syllabus_cal auth                                # step 3: Google sign-in
+python -m syllabus_cal auth --test-event                   # step 3: + write one test event
 ```
 
-`--semester-start` / `--semester-end` are optional and only used to help the
-model resolve recurring "until" dates — they're never required.
+`--semester-start` / `--semester-end` on `parse` are optional and only used
+to help the model resolve recurring "until" dates — never required.
 
-Everything else in the eventual CLI (`auth`, writing to Calendar,
-per-event confirmation) is **not implemented yet** and will land in later
-steps, per the build order in the project spec. Running `parse` without
-`--dry-run`, or running `auth`, currently just prints a message saying so.
+**Not yet wired**: `parse` without `--dry-run` doesn't write anything —
+that needs the per-event confirmation UI (step 4) and end-to-end wiring
+(step 5), still to come. `auth` and `auth --test-event` are real, but
+they're for proving the OAuth + Calendar API path works, not the actual
+parse → confirm → write pipeline.
 
 ## Setup
 
@@ -30,10 +36,14 @@ pip install -r requirements.txt
 cp .env.example .env   # then add your ANTHROPIC_API_KEY
 ```
 
+For Google Calendar auth, follow [`SETUP.md`](./SETUP.md) first (Google
+Cloud Console steps, from zero) — you need `credentials.json` in the
+project root before `auth` will work.
+
 ## What to test right now
 
-Run `parse --dry-run` against a real screenshot of yours (a syllabus page,
-a club flyer, a schedule email) and check:
+**Step 1 — extraction.** Run `parse --dry-run` against a real screenshot of
+yours (a syllabus page, a club flyer, a schedule email) and check:
 
 - Does the table it prints match what's actually in the image?
 - Are recurring class times resolved into one row with a recurrence
@@ -47,5 +57,14 @@ If something's wrong, the fix is almost always in
 `syllabus_cal/prompts/extract_events.py` (the vision prompt) rather than in
 the pipeline code — that's why the prompt was kept as a standalone module.
 
-Google Calendar auth setup (`SETUP.md`) will be written when step 3 (the
-OAuth flow) is built.
+**Step 3 — Google auth.** After completing `SETUP.md`:
+
+- `python -m syllabus_cal auth` — should open your browser, let you pick
+  your Google account, and finish with `Signed in. token.json saved...`.
+- `python -m syllabus_cal auth --test-event` — should additionally print a
+  link to a real event on your calendar, tomorrow at 9:00–9:30 AM. Open the
+  link and confirm it's actually there, then feel free to delete it.
+- `python -m syllabus_cal` with no arguments — should show the tutorial and
+  correctly report whether you're already signed in.
+- Delete or rename `token.json` and re-run something that needs it — you
+  should get a plain "run `auth` again" message, never a stack trace.

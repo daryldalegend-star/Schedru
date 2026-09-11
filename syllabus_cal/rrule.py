@@ -20,9 +20,11 @@ from zoneinfo import ZoneInfo
 
 from .schema import RecurrenceRule
 
-# calendar_client.py reads this same constant when it builds the event body,
-# so there's exactly one place to change the timezone.
-DEFAULT_TZ = ZoneInfo("America/New_York")
+# calendar_client.py imports TIMEZONE for the event body's timeZone fields and
+# DEFAULT_TZ for its own local-time math, so there's exactly one place to
+# change the timezone.
+TIMEZONE = "America/New_York"
+DEFAULT_TZ = ZoneInfo(TIMEZONE)
 _UTC = ZoneInfo("UTC")
 
 _FREQ_MAP = {
