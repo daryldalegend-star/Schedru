@@ -5,7 +5,7 @@ club flyer, or schedule email; it extracts every dated commitment, shows you
 what it found, and (once later build steps land) writes confirmed events to
 your Google Calendar.
 
-## Status: Step 3 of 5
+## Status: Step 4 of 5
 
 Running `python -m syllabus_cal` with no arguments shows a short tutorial
 and, if you're not signed in yet, offers to run Google sign-in right there.
@@ -21,11 +21,17 @@ python -m syllabus_cal auth --test-event                   # step 3: + write one
 `--semester-start` / `--semester-end` on `parse` are optional and only used
 to help the model resolve recurring "until" dates — never required.
 
+The per-event confirmation UI (`syllabus_cal/confirm.py`) is built and
+tested, but not yet reachable from the CLI — hooking it into `parse` is
+step 5. It shows events grouped by confidence, then walks you through each
+one with **(a)dd / (e)dit / (s)kip**. Anything low-confidence or flagged
+defaults to *skip*, so hitting Enter through the whole list never adds a
+guess.
+
 **Not yet wired**: `parse` without `--dry-run` doesn't write anything —
-that needs the per-event confirmation UI (step 4) and end-to-end wiring
-(step 5), still to come. `auth` and `auth --test-event` are real, but
-they're for proving the OAuth + Calendar API path works, not the actual
-parse → confirm → write pipeline.
+that's step 5. `auth` and `auth --test-event` are real, but they prove the
+OAuth + Calendar API path works; they aren't the actual parse → confirm →
+write pipeline.
 
 ## Setup
 

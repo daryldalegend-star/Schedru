@@ -19,6 +19,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -125,14 +126,14 @@ def _render_events_table(result: ExtractionResult) -> None:
 
         table.add_row(
             flag,
-            event.title,
+            escape(event.title),
             event.event_type,
             str(event.start_date),
             time_str,
             recurrence_str,
-            event.location or "-",
+            escape(event.location or "-"),
             confidence_str,
-            "; ".join(event.ambiguity_flags) or "-",
+            escape("; ".join(event.ambiguity_flags) or "-"),
         )
 
     console.print(table)

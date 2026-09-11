@@ -1,0 +1,62 @@
+{
+  "events": [
+    {
+      "title": "General Biology Lecture",
+      "event_type": "class",
+      "start_date": "2026-09-03",
+      "start_time": "09:50",
+      "end_time": "11:10",
+      "location": "Busch SEC 118",
+      "recurrence": {
+        "freq": "WEEKLY",
+        "days_of_week": ["TU", "TH"],
+        "until": "2026-12-10",
+        "exdates": ["2026-11-26"]
+      },
+      "notes": null,
+      "confidence": 0.94,
+      "ambiguity_flags": []
+    },
+    {
+      "title": "Problem Set 3 due",
+      "event_type": "assignment",
+      "start_date": "2026-09-20",
+      "start_time": null,
+      "end_time": null,
+      "location": null,
+      "recurrence": null,
+      "notes": "Submit on Canvas",
+      "confidence": 0.91,
+      "ambiguity_flags": []
+    },
+    {
+      "title": "Midterm Exam",
+      "event_type": "exam",
+      "start_date": "2026-10-15",
+      "start_time": "07:00",
+      "end_time": null,
+      "location": null,
+      "recurrence": null,
+      "notes": null,
+      "confidence": 0.45,
+      "ambiguity_flags": ["AM/PM unclear", "room not stated"]
+    },
+    {
+      "title": "Organic Chem Study Group [Sec B]",
+      "event_type": "club",
+      "start_date": "2026-09-14",
+      "start_time": "18:00",
+      "end_time": "19:30",
+      "location": "Library Room 204",
+      "recurrence": {
+        "freq": "BIWEEKLY",
+        "days_of_week": ["MO"],
+        "until": null,
+        "exdates": []
+      },
+      "notes": "Bring [/] notes",
+      "confidence": 0.72,
+      "ambiguity_flags": ["end date not stated"]
+    }
+  ]
+}
