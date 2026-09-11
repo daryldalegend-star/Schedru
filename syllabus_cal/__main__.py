@@ -36,18 +36,23 @@ The intended flow:
   2. you review what it found (anything uncertain is flagged, never guessed)
   3. confirmed events get written to your Google Calendar
 
-[bold]Commands available right now:[/bold]
+[bold]Commands:[/bold]
+  [cyan]python -m syllabus_cal parse <image>[/cyan]
+      The main one. Reads the image, shows you what it found, asks about each
+      event (add / edit / skip), then writes the ones you approved.
+      Add --semester-start/--semester-end (YYYY-MM-DD) to help it resolve
+      recurring "until" dates.
+
   [cyan]python -m syllabus_cal parse <image> --dry-run[/cyan]
-      Extract events from a screenshot and print them. Never touches Calendar.
-      Add --semester-start/--semester-end (YYYY-MM-DD) to help resolve recurring
-      "until" dates.
+      Same extraction, but just prints the results and stops. Never touches
+      your calendar. Good for checking what it sees before committing.
 
   [cyan]python -m syllabus_cal auth[/cyan]
-      Sign in with your Google account (opens a browser). Needed before Calendar
-      writing will work. See SETUP.md if you haven't created credentials.json yet.
+      Sign in with your Google account (opens a browser). Add --test-event to
+      also write one throwaway event confirming it works.
 
-[bold]Still being built:[/bold] reviewing/editing each event before it's written, and
-writing to Calendar itself. Until then, --dry-run is the way to try it."""
+[bold]Nothing is ever written without you saying yes to it.[/bold] Anything the model
+wasn't sure about is flagged and defaults to being skipped."""
 
 
 def _parse_date(value: str) -> date:
@@ -139,20 +144,70 @@ def _render_events_table(result: ExtractionResult) -> None:
     console.print(table)
 
 
-def cmd_parse(args: argparse.Namespace) -> int:
-    if not args.dry_run:
-        err_console.print(
-            "[red]Writing to Calendar isn't wired up yet (it needs the confirmation UI, "
-            "a later build step). Re-run with --dry-run.[/red]"
-        )
-        return 2
+def _ensure_signed_in() -> bool:
+    """Offer to run sign-in if there's no token yet. True if we're good to write."""
+    from .calendar_client import is_authenticated
 
+    if is_authenticated():
+        return True
+
+    console.print(
+        "[yellow]You're not signed in to Google yet[/yellow] — that's needed before "
+        "anything can be written to your calendar."
+    )
+    try:
+        answer = console.input("Sign in with Google now? (y/N) ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        console.print()
+        return False
+
+    if answer not in ("y", "yes"):
+        return False
+
+    return cmd_auth(argparse.Namespace(test_event=False)) == 0
+
+
+def _render_write_summary(outcomes) -> None:
+    created = [o for o in outcomes if o.ok]
+    failed = [o for o in outcomes if not o.ok]
+
+    if created:
+        console.print()
+        console.print(f"[green]Added {len(created)} event(s) to your calendar:[/green]")
+        for outcome in created:
+            link = outcome.link or "(no link returned)"
+            console.print(f"  • {escape(outcome.event.title)}")
+            console.print(f"    {link}")
+
+    if failed:
+        console.print()
+        err_console.print(f"[red]{len(failed)} event(s) could NOT be written:[/red]")
+        for outcome in failed:
+            err_console.print(f"  • {escape(outcome.event.title)} — {escape(outcome.error or '')}")
+        err_console.print(
+            "\n[yellow]The events listed above were not created. Everything under "
+            "'Added' already exists — if you re-run this image, skip those at the "
+            "confirmation step so you don't get duplicates.[/yellow]"
+        )
+
+
+def cmd_parse(args: argparse.Namespace) -> int:
     load_dotenv()
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         err_console.print(
             "[red]ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your "
             "key.[/red]"
+        )
+        return 2
+
+    # Check auth before the vision call so a sign-in problem doesn't cost an
+    # API request, same reasoning as validating the image up front.
+    if not args.dry_run and not _ensure_signed_in():
+        err_console.print(
+            "[red]Not signed in, so nothing can be written. Run "
+            "`python -m syllabus_cal auth`, or use --dry-run to just see what's in "
+            "the image.[/red]"
         )
         return 2
 
@@ -177,8 +232,38 @@ def cmd_parse(args: argparse.Namespace) -> int:
         err_console.print(f"[red]{exc}[/red]")
         return 1
 
-    _render_events_table(result)
-    return 0
+    if args.dry_run:
+        _render_events_table(result)
+        console.print("[dim]Dry run — nothing was written to your calendar.[/dim]")
+        return 0
+
+    if not result.events:
+        console.print("[yellow]No dated commitments found in this image.[/yellow]")
+        return 0
+
+    from .calendar_client import AuthError, get_calendar_service, write_events
+    from .confirm import ConfirmationAborted, confirm_events
+
+    try:
+        confirmed = confirm_events(result.events, console)
+    except ConfirmationAborted:
+        console.print("\n[yellow]Cancelled — nothing was written.[/yellow]")
+        return 1
+
+    if not confirmed:
+        console.print("[yellow]Nothing confirmed, so nothing was written.[/yellow]")
+        return 0
+
+    try:
+        service = get_calendar_service()
+    except AuthError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        return 1
+
+    outcomes = write_events(service, confirmed)
+    _render_write_summary(outcomes)
+
+    return 0 if all(o.ok for o in outcomes) else 1
 
 
 def cmd_auth(args: argparse.Namespace) -> int:
@@ -221,8 +306,8 @@ def cmd_tutorial(args: argparse.Namespace) -> int:
         return 0
 
     console.print(
-        "\n[yellow]You're not signed in to Google yet.[/yellow] (--dry-run parsing works "
-        "either way; signing in is only needed for the eventual Calendar writing.)"
+        "\n[yellow]You're not signed in to Google yet.[/yellow] You'll need to be before "
+        "anything can be written to your calendar. (--dry-run works either way.)"
     )
     try:
         answer = console.input("Sign in with Google now? (y/N) ").strip().lower()

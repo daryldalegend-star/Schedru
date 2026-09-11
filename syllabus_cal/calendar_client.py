@@ -7,6 +7,7 @@ project root and are gitignored -- never commit either.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from .rrule import DEFAULT_TZ, TIMEZONE, build_recurrence
 from .schema import ExtractedEvent
@@ -145,6 +147,48 @@ def create_event(service, event_body: dict[str, Any], calendar_id: str = "primar
     landed, so a re-run doesn't create duplicates.
     """
     return service.events().insert(calendarId=calendar_id, body=event_body).execute()
+
+
+@dataclass(frozen=True)
+class WriteOutcome:
+    """What happened to one event. `link` is set on success, `error` on failure."""
+
+    event: ExtractedEvent
+    link: str | None = None
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+
+def _readable_error(exc: Exception) -> str:
+    if isinstance(exc, HttpError):
+        reason = getattr(exc, "reason", None)
+        status = getattr(exc, "status_code", None)
+        if reason:
+            return f"{reason}" + (f" (HTTP {status})" if status else "")
+    return f"{type(exc).__name__}: {exc}"
+
+
+def write_events(
+    service, events: list[ExtractedEvent], calendar_id: str = "primary"
+) -> list[WriteOutcome]:
+    """Write each event, continuing past failures.
+
+    One rejected event shouldn't block the rest, and the caller needs to know
+    exactly which ones landed so a re-run doesn't duplicate them -- so every
+    event gets an outcome rather than the batch dying on the first error.
+    """
+    outcomes: list[WriteOutcome] = []
+    for event in events:
+        try:
+            created = create_event(service, build_event_body(event), calendar_id)
+        except Exception as exc:
+            outcomes.append(WriteOutcome(event=event, error=_readable_error(exc)))
+        else:
+            outcomes.append(WriteOutcome(event=event, link=created.get("htmlLink")))
+    return outcomes
 
 
 def create_hardcoded_test_event(service, calendar_id: str = "primary") -> dict[str, Any]:

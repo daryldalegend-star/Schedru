@@ -6,6 +6,7 @@ from syllabus_cal.calendar_client import (
     build_event_body,
     create_event,
     create_hardcoded_test_event,
+    write_events,
 )
 from syllabus_cal.rrule import TIMEZONE
 from syllabus_cal.schema import ExtractedEvent, RecurrenceRule
@@ -154,3 +155,53 @@ def test_hardcoded_test_event_is_tomorrow_9_to_930_with_marker():
     assert body["end"] == {"dateTime": f"{tomorrow}T09:30:00", "timeZone": TIMEZONE}
     assert body["extendedProperties"]["private"] == CREATED_BY_MARKER
     assert "recurrence" not in body
+
+
+# Batch writing. The property that matters: one failure must not lose the
+# record of what already succeeded, or a re-run creates duplicates.
+
+
+def _event(title: str) -> ExtractedEvent:
+    return ExtractedEvent(
+        title=title,
+        event_type="assignment",
+        start_date=date(2026, 9, 20),
+        confidence=0.95,
+        ambiguity_flags=[],
+    )
+
+
+def test_write_events_returns_a_link_per_created_event():
+    service = MagicMock()
+    service.events.return_value.insert.return_value.execute.side_effect = [
+        {"htmlLink": "https://cal/1"},
+        {"htmlLink": "https://cal/2"},
+    ]
+
+    outcomes = write_events(service, [_event("One"), _event("Two")])
+
+    assert [o.ok for o in outcomes] == [True, True]
+    assert [o.link for o in outcomes] == ["https://cal/1", "https://cal/2"]
+
+
+def test_write_events_continues_past_a_failure_and_reports_both_sides():
+    service = MagicMock()
+    service.events.return_value.insert.return_value.execute.side_effect = [
+        {"htmlLink": "https://cal/1"},
+        RuntimeError("quota exceeded"),
+        {"htmlLink": "https://cal/3"},
+    ]
+
+    outcomes = write_events(service, [_event("One"), _event("Two"), _event("Three")])
+
+    assert [o.ok for o in outcomes] == [True, False, True]
+    assert [o.event.title for o in outcomes] == ["One", "Two", "Three"]
+    assert "quota exceeded" in outcomes[1].error
+    # The third event still got written -- the batch didn't abort.
+    assert outcomes[2].link == "https://cal/3"
+
+
+def test_write_events_on_empty_list_does_nothing():
+    service = MagicMock()
+    assert write_events(service, []) == []
+    service.events.return_value.insert.assert_not_called()
