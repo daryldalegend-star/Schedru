@@ -10,8 +10,13 @@ echo
 # `command -v python3` isn't enough on macOS: /usr/bin/python3 exists as a
 # stub that only prompts to install the Xcode command line tools, so require
 # real "Python 3.x" version output before trusting a candidate.
+#
+# Explicit versions come first because a bare `python3` on macOS is often the
+# Xcode one (3.9), which is too old -- bootstrap.py enforces the minimum, but
+# preferring a newer one here avoids sending the user to install what they
+# already have.
 PYCMD=""
-for candidate in python3 python3.13 python3.12 python3.11 python; do
+for candidate in python3.14 python3.13 python3.12 python3.11 python3 python; do
     if version=$("$candidate" --version 2>&1) && [[ "$version" == Python\ 3* ]]; then
         PYCMD="$candidate"
         break

@@ -24,6 +24,12 @@ ENV_FILE = ROOT / ".env"
 ENV_EXAMPLE = ROOT / ".env.example"
 KEY = "ANTHROPIC_API_KEY"
 
+# pydantic evaluates annotations like `time | None` at runtime, which is a
+# TypeError before 3.10. Checked here rather than left to crash later, because
+# macOS's Xcode command line tools install Python 3.9 -- so "I clicked the
+# thing macOS offered me" lands exactly on the unsupported version.
+MIN_PYTHON = (3, 11)
+
 
 def venv_python() -> Path:
     if os.name == "nt":
@@ -36,6 +42,24 @@ def fail(*lines: str) -> int:
     for line in lines:
         print(line)
     return 1
+
+
+def ensure_python_version() -> int:
+    if sys.version_info >= MIN_PYTHON:
+        return 0
+
+    running = ".".join(str(part) for part in sys.version_info[:3])
+    wanted = ".".join(str(part) for part in MIN_PYTHON)
+    return fail(
+        f"This needs Python {wanted} or newer, but it's running on Python {running}.",
+        f"    ({sys.executable})",
+        "",
+        f"Install Python {wanted}+ from https://www.python.org/downloads/",
+        "then run this again.",
+        "",
+        "On macOS, note that the Python offered by the Xcode command line",
+        "tools is too old - use the python.org installer instead.",
+    )
 
 
 def ensure_venv() -> int:
@@ -119,7 +143,7 @@ def ensure_env_file() -> int:
 
 
 def main(argv: list[str]) -> int:
-    for step in (ensure_venv, ensure_dependencies, ensure_env_file):
+    for step in (ensure_python_version, ensure_venv, ensure_dependencies, ensure_env_file):
         code = step()
         if code:
             return code

@@ -26,13 +26,36 @@ extract events; you just can't write them to a calendar.
 
 ## Getting started
 
+You need **Python 3.11 or newer** first, from
+[python.org/downloads](https://www.python.org/downloads/).
+
 **The easy way:** double-click `start.command` (macOS) or `start.bat`
 (Windows). First run installs everything and creates `.env` for your API
 key. Run it again after pasting the key in.
 
-You need Python 3.11+ installed first — get it from
-[python.org/downloads](https://www.python.org/downloads/). **On Windows,
-tick "Add python.exe to PATH"** on the installer's first screen. If the
+### macOS
+
+macOS quarantines anything downloaded from the internet, so double-clicking
+`start.command` the first time is likely to be blocked with *"cannot be
+opened because it is from an unidentified developer"* or *"Apple could not
+verify it is free of malware"*. Two ways past it:
+
+- **Right-click** `start.command` → **Open** → click **Open** in the dialog.
+  (Right-click matters; a plain double-click doesn't offer the bypass.)
+- Or open Terminal and run this once, which clears the quarantine flag,
+  makes sure the file is executable, and starts it:
+
+  ```
+  cd ~/Downloads/syllabus_cal && xattr -dr com.apple.quarantine . && chmod +x start.command && ./start.command
+  ```
+
+Don't use the Python that macOS offers via the Xcode command line tools —
+it's 3.9, which is too old. Install from python.org instead. (The launcher
+will tell you if you hit this.)
+
+### Windows
+
+Tick **"Add python.exe to PATH"** on the installer's first screen. If the
 launcher says Python wasn't found even though you installed it, Windows'
 Microsoft Store shortcut is shadowing it: turn off `python.exe` and
 `python3.exe` under Settings → Apps → Advanced app settings → App
@@ -78,20 +101,22 @@ Every event created carries `extendedProperties.private.created_by =
 
 ## What's verified, and what isn't
 
-68 automated tests cover the schema, the RRULE builder (including the DST
-boundary), event-body construction, the confirmation UI, first-run setup,
-and the full parse → confirm → write path with the Anthropic and Google
-calls faked.
+72 automated tests cover the schema, the RRULE builder (including the DST
+boundary), event-body construction, the confirmation UI, first-run setup
+(including rejecting Python 3.9), and the full parse → confirm → write
+path with the Anthropic and Google calls faked.
 
 **Never exercised against the real services**: the browser OAuth round-trip
 and an actual write landing on a real Google calendar. Those need your
 credentials, so the first real run is the first real test. Start with
 `auth --test-event` before trusting it with a full syllabus.
 
-**`start.bat` has never been run on Windows** — this was built on Linux,
-where no `cmd.exe` exists. That's why setup logic lives in `bootstrap.py`
-(tested) rather than in the launchers, leaving the batch file doing only
-"find a working Python, run that file".
+**Neither launcher has run on its real OS** — this was built on Linux, so
+`start.bat` has never seen `cmd.exe`, and `start.command` has been run
+under bash on Linux but never on macOS (where Gatekeeper quarantine, which
+can't be reproduced here, is the likely first-run snag). That's why setup
+logic lives in `bootstrap.py` (tested) rather than in the launchers,
+leaving them doing only "find a working Python, run that file".
 
 ## What to check on a first real run
 

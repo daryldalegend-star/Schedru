@@ -7,3 +7,6 @@ rich>=13.7.0
 python-dotenv>=1.0.0
 Pillow>=10.0.0
 pillow-heif>=0.15.0
+# Windows ships no IANA timezone database, so zoneinfo.ZoneInfo() raises at
+# import there without this. Unused on macOS/Linux, which have a system one.
+tzdata>=2024.1

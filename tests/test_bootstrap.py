@@ -104,6 +104,39 @@ def test_dependencies_are_not_reinstalled_once_stamped(bootstrap, tmp_path, monk
     assert calls == []
 
 
+def test_python_39_from_xcode_is_rejected_with_a_clear_message(bootstrap, monkeypatch, capsys):
+    # What macOS hands you if you accept the Xcode command line tools prompt.
+    # pydantic would otherwise crash later on `time | None`.
+    monkeypatch.setattr(bootstrap.sys, "version_info", (3, 9, 6))
+
+    assert bootstrap.ensure_python_version() == 1
+    out = capsys.readouterr().out
+    assert "Python 3.9.6" in out
+    assert "3.11" in out
+    assert "Xcode" in out
+
+
+def test_python_310_is_still_too_old(bootstrap, monkeypatch):
+    monkeypatch.setattr(bootstrap.sys, "version_info", (3, 10, 14))
+    assert bootstrap.ensure_python_version() == 1
+
+
+def test_supported_python_passes(bootstrap, monkeypatch):
+    for version in [(3, 11, 0), (3, 12, 7), (3, 14, 1)]:
+        monkeypatch.setattr(bootstrap.sys, "version_info", version)
+        assert bootstrap.ensure_python_version() == 0
+
+
+def test_version_is_checked_before_building_the_venv(bootstrap, monkeypatch):
+    """An old Python must be rejected before it creates a venv we can't use."""
+    monkeypatch.setattr(bootstrap.sys, "version_info", (3, 9, 6))
+    called = []
+    monkeypatch.setattr(bootstrap.subprocess, "run", lambda *a, **k: called.append(a))
+
+    assert bootstrap.main([]) == 1
+    assert called == []
+
+
 def test_venv_python_path_is_platform_correct(bootstrap, monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap.os, "name", "nt")
     assert bootstrap.venv_python() == tmp_path / ".venv" / "Scripts" / "python.exe"
