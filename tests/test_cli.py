@@ -129,3 +129,61 @@ def test_cancelling_confirmation_writes_nothing(wired, monkeypatch, capsys):
     assert exit_code == 1
     wired.events.return_value.insert.assert_not_called()
     assert "cancelled" in capsys.readouterr().out.lower()
+
+
+# Dragging a file into a terminal doesn't produce a clean path: Terminal.app
+# backslash-escapes spaces and metacharacters, other terminals quote instead.
+
+
+def test_plain_path_is_unchanged():
+    assert cli.clean_dropped_path("/Users/me/shot.png") == "/Users/me/shot.png"
+
+
+def test_surrounding_whitespace_is_trimmed():
+    # Terminal leaves a trailing space after a drag.
+    assert cli.clean_dropped_path("  /Users/me/shot.png ") == "/Users/me/shot.png"
+
+
+def test_backslash_escaped_spaces_are_unescaped():
+    assert (
+        cli.clean_dropped_path("/Users/me/Screen\\ Shot\\ 2026.png")
+        == "/Users/me/Screen Shot 2026.png"
+    )
+
+
+def test_single_quoted_path_is_unwrapped():
+    assert cli.clean_dropped_path("'/Users/me/my shot.png'") == "/Users/me/my shot.png"
+
+
+def test_double_quoted_path_is_unwrapped():
+    assert cli.clean_dropped_path('"/Users/me/my shot.png"') == "/Users/me/my shot.png"
+
+
+def test_other_escaped_metacharacters_are_unescaped():
+    assert (
+        cli.clean_dropped_path("/Users/me/CHEM\\&BIO\\ \\(1\\).png")
+        == "/Users/me/CHEM&BIO (1).png"
+    )
+
+
+def test_dropped_screenshot_runs_the_full_parse_flow(wired, monkeypatch, capsys):
+    import syllabus_cal.calendar_client as calendar_client
+
+    monkeypatch.setattr(calendar_client, "is_authenticated", lambda: True)
+    # Path with an escaped space, then Enter through the four events.
+    answer_with(monkeypatch, "/tmp/Screen\\ Shot.png", "", "", "", "")
+
+    exit_code = cli.main([])
+
+    assert exit_code == 0
+    assert wired.events.return_value.insert.call_count == 2
+
+
+def test_empty_drop_prompt_quits_without_parsing(wired, monkeypatch):
+    import syllabus_cal.calendar_client as calendar_client
+
+    monkeypatch.setattr(calendar_client, "is_authenticated", lambda: True)
+    answer_with(monkeypatch, "")
+
+    assert cli.main([]) == 0
+    wired.events.return_value.insert.assert_not_called()

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -296,6 +297,43 @@ def cmd_auth(args: argparse.Namespace) -> int:
     return 0
 
 
+def clean_dropped_path(raw: str) -> str:
+    """Turn whatever dragging a file into a terminal produces into a real path.
+
+    Terminal.app backslash-escapes spaces and other shell metacharacters;
+    some terminals wrap the path in quotes instead.
+    """
+    text = raw.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
+        return text[1:-1]
+    return re.sub(r"\\(.)", r"\1", text)
+
+
+def _prompt_for_screenshot() -> int:
+    """Ask for an image by drag-and-drop, then run the normal parse flow."""
+    console.print()
+    console.print("[bold]Drag your screenshot into this window, then press Enter.[/bold]")
+    console.print("[dim](Or just press Enter to quit.)[/dim]")
+
+    try:
+        answer = console.input("> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        console.print()
+        return 0
+
+    if not answer:
+        return 0
+
+    return cmd_parse(
+        argparse.Namespace(
+            image=Path(clean_dropped_path(answer)),
+            dry_run=False,
+            semester_start=None,
+            semester_end=None,
+        )
+    )
+
+
 def cmd_tutorial(args: argparse.Namespace) -> int:
     from .calendar_client import is_authenticated
 
@@ -303,7 +341,7 @@ def cmd_tutorial(args: argparse.Namespace) -> int:
 
     if is_authenticated():
         console.print("\n[green]You're already signed in to Google.[/green]")
-        return 0
+        return _prompt_for_screenshot()
 
     console.print(
         "\n[yellow]You're not signed in to Google yet.[/yellow] You'll need to be before "
@@ -316,7 +354,8 @@ def cmd_tutorial(args: argparse.Namespace) -> int:
         answer = "n"
 
     if answer == "y":
-        return cmd_auth(argparse.Namespace(test_event=False))
+        code = cmd_auth(argparse.Namespace(test_event=False))
+        return _prompt_for_screenshot() if code == 0 else code
 
     console.print("No problem — run [bold]python -m syllabus_cal auth[/bold] whenever you're ready.")
     return 0
