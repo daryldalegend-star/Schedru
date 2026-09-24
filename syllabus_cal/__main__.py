@@ -107,7 +107,7 @@ def _render_events_table(result: ExtractionResult) -> None:
     table.add_column("Recurrence")
     table.add_column("Location")
     table.add_column("Confidence")
-    table.add_column("Ambiguity flags")
+    table.add_column("Assumed / flagged")
 
     for event in result.events:
         flag = "[bold red]REVIEW[/bold red]" if event.needs_review else "[green]ok[/green]"
@@ -139,7 +139,13 @@ def _render_events_table(result: ExtractionResult) -> None:
             recurrence_str,
             escape(event.location or "-"),
             confidence_str,
-            escape("; ".join(event.ambiguity_flags) or "-"),
+            escape(
+                "; ".join(
+                    [f"~ {a}" for a in event.assumptions]
+                    + [f"! {f}" for f in event.ambiguity_flags]
+                )
+                or "-"
+            ),
         )
 
     console.print(table)

@@ -62,9 +62,10 @@ def _events_table(events: list[ExtractedEvent], title: str, style: str) -> Table
     table.add_column("Repeats")
     table.add_column("Location")
     table.add_column("Conf.", justify="right")
-    table.add_column("Flags")
+    table.add_column("Assumed / flagged")
 
     for number, event in events:
+        notes = [f"~ {a}" for a in event.assumptions] + [f"! {f}" for f in event.ambiguity_flags]
         table.add_row(
             str(number),
             escape(event.title),
@@ -74,7 +75,7 @@ def _events_table(events: list[ExtractedEvent], title: str, style: str) -> Table
             format_recurrence(event),
             escape(event.location or "-"),
             f"{event.confidence:.2f}",
-            escape("; ".join(event.ambiguity_flags) or "-"),
+            escape("; ".join(notes) or "-"),
         )
     return table
 
@@ -101,6 +102,8 @@ def render_event_detail(event: ExtractedEvent, console: Console) -> None:
     if event.notes:
         console.print(f"  Notes: {escape(event.notes)}")
     console.print(f"  Confidence: {event.confidence:.2f}")
+    for assumed in event.assumptions:
+        console.print(f"  [yellow]~ assumed: {escape(assumed)}[/yellow]")
     for flag in event.ambiguity_flags:
         console.print(f"  [red]! {escape(flag)}[/red]")
 

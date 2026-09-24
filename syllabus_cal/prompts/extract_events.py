@@ -34,7 +34,8 @@ must be a single JSON object that a JSON parser can load directly, matching exac
       }} | null,
       "notes": string | null,
       "confidence": float between 0.0 and 1.0,
-      "ambiguity_flags": [string, ...]
+      "ambiguity_flags": [string, ...],
+      "assumptions": [string, ...]
     }}
   ]
 }}
@@ -47,24 +48,38 @@ Rules:
 one) and whose "recurrence" field carries the pattern. Never emit one event per occurrence. \
 A one-time deadline (an assignment due date, a single exam date) has "recurrence": null.
 
-2. NEVER GUESS A PLAUSIBLE DATE OR TIME. This is the most important rule. If a date, a time, \
-an AM/PM, or an end-of-term / "until" date is not clearly stated in the image, do NOT infer a \
-"reasonable" value for it. Instead:
-   - lower "confidence" (below 0.8) for that event, and
-   - add a short human-readable string to "ambiguity_flags" describing exactly what was \
-unstated or unclear (e.g. "end date not stated", "AM/PM unclear", "year assumed from context").
-   A confident-looking wrong date is much worse than one flagged as uncertain — when in doubt, \
-flag it, don't guess it.
+2. FILL IN OBVIOUS GAPS, AND SAY WHAT YOU FILLED IN. When something is unstated but has a \
+clear answer from context, use it and record what you decided in "assumptions" — a short \
+string like "7:30 read as PM (evening club meeting)". Do NOT leave these blank or flagged:
 
-3. DISTINGUISH DEADLINES FROM MEETINGS. A one-time "due" item (assignment, paper, project) is \
+   - AM/PM on a bare time. Decide which one a college student would actually attend.
+     Lectures, labs, classes and office hours: 8:00-11:59 is AM, 12:00-6:59 is PM.
+     Club meetings, socials, performances, practices, review sessions: 4:00-11:59 is PM.
+     A stated range usually settles it on its own ("7:30-9:00" is an evening).
+   - A missing end time. Assume a sensible length and note it: about 1 hour for a club
+     meeting or office hours, 1 hour 20 minutes for a lecture, 2-3 hours for an exam or lab.
+   - A missing year on an otherwise complete date. Use the nearest matching date on or
+     after today, and say so.
+
+3. STILL DON'T INVENT WHAT YOU CANNOT INFER. "assumptions" is only for gaps with an obvious \
+answer. When something has no reasonable default — no date at all, a date you can't read, \
+conflicting information, a recurring event whose end is never stated — then lower "confidence" \
+below 0.8 and put it in "ambiguity_flags" instead, leaving the field null. A confident wrong \
+date is far worse than a flagged one.
+
+   The difference in one line: "assumptions" means *I filled this in and I'm probably right*; \
+"ambiguity_flags" means *I genuinely don't know, please look at this one*. Events with only \
+assumptions are added by default; flagged events are skipped by default.
+
+4. DISTINGUISH DEADLINES FROM MEETINGS. A one-time "due" item (assignment, paper, project) is \
 "event_type": "assignment" with no recurrence. A recurring meeting block (lecture, lab, office \
 hours, club meeting) gets the appropriate "event_type" and a "recurrence" rule.
 
-4. LOCATION GOES IN "location", NOT IN "title". Room numbers, building names, and building \
+5. LOCATION GOES IN "location", NOT IN "title". Room numbers, building names, and building \
 abbreviations (e.g. "Busch SEC 118", "Zoom", "Room 204") belong in "location". Keep "title" to \
 the human-readable name of the class/event/deadline only.
 
-5. "confidence" reflects how sure you are about the event as a whole (dates, times, and \
+6. "confidence" reflects how sure you are about the event as a whole (dates, times, and \
 recurrence all considered) — not just whether the text was legible.
 
 If the image contains no dated commitments at all, return {{"events": []}}.

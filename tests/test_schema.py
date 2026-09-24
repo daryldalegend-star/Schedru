@@ -86,3 +86,56 @@ def test_invalid_event_type_rejected():
             confidence=0.9,
             ambiguity_flags=[],
         )
+
+
+# Assumptions vs ambiguity flags. An assumption is a gap the model filled with
+# an obvious answer; a flag is something it genuinely couldn't determine. Only
+# the latter should force the user to re-confirm.
+
+
+def test_assumptions_alone_do_not_force_review():
+    event = ExtractedEvent(
+        title="Rutgers AI Club Weekly Meeting",
+        event_type="club",
+        start_date=date(2026, 9, 24),
+        start_time=time(19, 30),
+        confidence=0.9,
+        ambiguity_flags=[],
+        assumptions=["7:30 read as PM (evening club meeting)"],
+    )
+    assert event.needs_review is False
+
+
+def test_ambiguity_flags_still_force_review_even_alongside_assumptions():
+    event = ExtractedEvent(
+        title="Midterm",
+        event_type="exam",
+        start_date=date(2026, 10, 15),
+        start_time=time(9, 0),
+        confidence=0.9,
+        ambiguity_flags=["room not stated"],
+        assumptions=["9:00 read as AM (morning exam)"],
+    )
+    assert event.needs_review is True
+
+
+def test_low_confidence_still_forces_review_with_only_assumptions():
+    event = ExtractedEvent(
+        title="Something blurry",
+        event_type="other",
+        start_date=date(2026, 10, 15),
+        confidence=0.4,
+        ambiguity_flags=[],
+        assumptions=["year assumed 2026"],
+    )
+    assert event.needs_review is True
+
+
+def test_assumptions_default_to_empty():
+    event = ExtractedEvent(
+        title="Plain",
+        event_type="other",
+        start_date=date(2026, 1, 1),
+        confidence=0.9,
+    )
+    assert event.assumptions == []

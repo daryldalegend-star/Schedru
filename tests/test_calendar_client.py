@@ -47,17 +47,49 @@ def test_timed_event_carries_timezone_and_marker():
     assert body["extendedProperties"]["private"] == CREATED_BY_MARKER
 
 
-def test_missing_end_time_defaults_to_start_time():
+def test_missing_end_time_becomes_an_hour_not_a_zero_length_event():
     event = ExtractedEvent(
         title="Quick check-in",
         event_type="other",
         start_date=date(2026, 9, 22),
         start_time=time(9, 0),
         confidence=0.7,
-        ambiguity_flags=["end time not stated"],
+        ambiguity_flags=[],
     )
     body = build_event_body(event)
-    assert body["start"]["dateTime"] == body["end"]["dateTime"]
+
+    assert body["start"]["dateTime"] == "2026-09-22T09:00:00"
+    assert body["end"]["dateTime"] == "2026-09-22T10:00:00"
+
+
+def test_missing_end_time_rolls_past_midnight_correctly():
+    event = ExtractedEvent(
+        title="Late study session",
+        event_type="other",
+        start_date=date(2026, 9, 22),
+        start_time=time(23, 30),
+        confidence=0.9,
+        ambiguity_flags=[],
+    )
+    body = build_event_body(event)
+    assert body["end"]["dateTime"] == "2026-09-23T00:30:00"
+
+
+def test_assumptions_are_recorded_on_the_event_description():
+    event = ExtractedEvent(
+        title="Rutgers AI Club Weekly Meeting",
+        event_type="club",
+        start_date=date(2026, 9, 24),
+        start_time=time(19, 30),
+        end_time=time(20, 30),
+        location="BSC 120 C",
+        confidence=0.9,
+        ambiguity_flags=[],
+        assumptions=["7:30 read as PM (evening club meeting)"],
+    )
+    body = build_event_body(event)
+
+    assert "assumed: 7:30 read as PM" in body["description"]
 
 
 def test_recurring_class_includes_rrule_in_body():

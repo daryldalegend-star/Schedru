@@ -32,10 +32,17 @@ class ExtractedEvent(BaseModel):
     notes: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     ambiguity_flags: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
 
     @property
     def needs_review(self) -> bool:
-        """Confidence below threshold or any stated ambiguity defaults to unselected."""
+        """Confidence below threshold or any stated ambiguity defaults to unselected.
+
+        Deliberately ignores `assumptions`: those are gaps the model filled in
+        with an obvious answer (a bare 7:30 on a club flyer is PM), which are
+        shown to the user but shouldn't make them re-confirm every event.
+        `ambiguity_flags` stays for things with no reasonable default.
+        """
         return self.confidence < CONFIDENCE_REVIEW_THRESHOLD or bool(self.ambiguity_flags)
 
 

@@ -118,8 +118,14 @@ def build_event_body(event: ExtractedEvent) -> dict[str, Any]:
     if event.location:
         body["location"] = event.location
 
-    notes = f"[{event.event_type}] {event.notes}" if event.notes else f"[{event.event_type}]"
-    body["description"] = notes
+    description = [f"[{event.event_type}]"]
+    if event.notes:
+        description.append(event.notes)
+    # Surfaced on the event itself so a wrong guess is catchable later, in
+    # Calendar, rather than only at the confirmation prompt.
+    for assumed in event.assumptions:
+        description.append(f"(assumed: {assumed})")
+    body["description"] = " ".join(description)
 
     if event.start_time is None:
         body["start"] = _event_date(event.start_date)
@@ -127,9 +133,16 @@ def build_event_body(event: ExtractedEvent) -> dict[str, Any]:
         # end is the following calendar day.
         body["end"] = _event_date(event.start_date + timedelta(days=1))
     else:
-        end_time = event.end_time or event.start_time
-        body["start"] = _event_datetime(event.start_date, event.start_time)
-        body["end"] = _event_datetime(event.start_date, end_time)
+        start = datetime.combine(event.start_date, event.start_time)
+        # A missing end time would otherwise produce a zero-length event, which
+        # Calendar renders as an unreadable sliver.
+        end = (
+            datetime.combine(event.start_date, event.end_time)
+            if event.end_time
+            else start + timedelta(hours=1)
+        )
+        body["start"] = {"dateTime": start.isoformat(), "timeZone": TIMEZONE}
+        body["end"] = {"dateTime": end.isoformat(), "timeZone": TIMEZONE}
 
     if event.recurrence:
         body["recurrence"] = build_recurrence(
