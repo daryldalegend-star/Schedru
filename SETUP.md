@@ -30,18 +30,9 @@ to talk to your Calendar.
 This is the screen your own browser will show you when you sign in — Google
 requires every app to declare one, even one only you will ever use.
 
-> **Heads up on menu names.** Google renamed this area from "OAuth consent
-> screen" to **Google Auth Platform**, and replaced the old multi-page
-> "Save and Continue" wizard with a **Get started** flow plus permanent
-> sub-pages (**Overview**, **Branding**, **Audience**, **Clients**,
-> **Data Access**). Rollouts have been uneven, so if your console still
-> shows the older layout, the old equivalents are noted below. The
-> substance is identical either way: name the app, set it to External, add
-> yourself as a test user, stay in Testing.
->
-> Also: this section only appears once you've enabled an API — which is why
-> step 2 comes first. If you don't see it, go back and enable the Calendar
-> API.
+All you're doing here is four things: name the app, set it to **External**,
+add your own Gmail as a **test user**, and leave it in **Testing**. The
+steps below are just those four, in order.
 
 1. Left sidebar: **APIs & Services → OAuth consent screen**. This will land
    you on **Google Auth Platform**.
@@ -64,6 +55,15 @@ requires every app to declare one, even one only you will ever use.
 
 You do **not** need to touch the **Data Access** page (old UI: "Scopes").
 The app requests the Calendar scope directly from the code.
+
+*If your screen doesn't match the wording above:* Google renamed this area
+from "OAuth consent screen" to **Google Auth Platform** and replaced the old
+multi-page "Save and Continue" wizard with a **Get started** flow plus
+permanent sub-pages (Overview, Branding, Audience, Clients, Data Access).
+The rollout has been uneven, so you may see either. The old equivalents are
+noted in italics where they differ — the four things you're doing are the
+same either way. And if you can't find this section at all, it's because
+it only appears once an API is enabled: go back and do step 2 first.
 
 ## 4. Create OAuth Desktop App credentials
 
