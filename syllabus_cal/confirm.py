@@ -99,6 +99,8 @@ def render_event_detail(event: ExtractedEvent, console: Console) -> None:
     console.print(f"  {event.start_date}  {format_when(event)}  |  {format_recurrence(event)}")
     if event.location:
         console.print(f"  Location: {escape(event.location)}")
+    if event.address:
+        console.print(f"  Address: {escape(event.address)}")
     if event.notes:
         console.print(f"  Notes: {escape(event.notes)}")
     console.print(f"  Confidence: {event.confidence:.2f}")
@@ -116,12 +118,14 @@ def _prompt(ask: Ask, text: str) -> str:
 
 
 def _ask_text(ask: Ask, label: str, current: str) -> str:
-    answer = _prompt(ask, f"  {label} (Enter = keep '{current}'): ").strip()
+    # The prompt is rendered as rich markup too, so model text in it is escaped
+    # for the same reason as everywhere else in this module.
+    answer = _prompt(ask, f"  {label} (Enter = keep '{escape(current)}'): ").strip()
     return answer or current
 
 
 def _ask_optional_text(ask: Ask, label: str, current: str | None) -> str | None:
-    shown = current if current is not None else "none"
+    shown = escape(current) if current is not None else "none"
     answer = _prompt(
         ask, f"  {label} (Enter = keep '{shown}', '{_CLEAR}' = clear): "
     ).strip()
@@ -176,6 +180,7 @@ def edit_event(event: ExtractedEvent, ask: Ask, console: Console) -> ExtractedEv
     else:
         data["end_time"] = _ask_time(ask, console, "End time", event.end_time)
     data["location"] = _ask_optional_text(ask, "Location", event.location)
+    data["address"] = _ask_optional_text(ask, "Address", event.address)
 
     return ExtractedEvent.model_validate(data)
 

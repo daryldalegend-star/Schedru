@@ -99,8 +99,8 @@ def test_mixed_batch_keeps_only_confirmed_events_in_order():
 
 def test_edit_updates_title_and_date_then_adds():
     console = quiet_console()
-    # e -> title, date, start time, end time, location -> confirm
-    ask = scripted("e", "Bio Lecture", "2026-09-08", "", "", "", "a")
+    # e -> title, date, start time, end time, location, address -> confirm
+    ask = scripted("e", "Bio Lecture", "2026-09-08", "", "", "", "", "a")
     confirmed = confirm_events([clean_event()], console, ask)
 
     assert len(confirmed) == 1
@@ -111,7 +111,7 @@ def test_edit_updates_title_and_date_then_adds():
 
 def test_editing_a_flagged_event_flips_the_default_to_add():
     # Having actively reviewed it, Enter should now mean add, not skip.
-    ask = scripted("e", "", "", "14:00", "", "", "")
+    ask = scripted("e", "", "", "14:00", "", "", "", "")
     confirmed = confirm_events([flagged_event()], quiet_console(), ask)
 
     assert len(confirmed) == 1
@@ -120,7 +120,7 @@ def test_editing_a_flagged_event_flips_the_default_to_add():
 
 def test_clearing_start_time_makes_it_all_day_and_skips_end_time_prompt():
     # No end-time answer is queued; scripted() raises if it's asked for.
-    ask = scripted("e", "", "", "-", "", "a")
+    ask = scripted("e", "", "", "-", "", "", "a")
     confirmed = confirm_events([clean_event()], quiet_console(), ask)
 
     assert confirmed[0].start_time is None
@@ -128,19 +128,19 @@ def test_clearing_start_time_makes_it_all_day_and_skips_end_time_prompt():
 
 
 def test_clearing_location():
-    ask = scripted("e", "", "", "", "", "-", "a")
+    ask = scripted("e", "", "", "", "", "-", "", "a")
     confirmed = confirm_events([clean_event()], quiet_console(), ask)
     assert confirmed[0].location is None
 
 
 def test_invalid_date_reprompts():
-    ask = scripted("e", "", "not-a-date", "2026-09-08", "", "", "", "a")
+    ask = scripted("e", "", "not-a-date", "2026-09-08", "", "", "", "", "a")
     confirmed = confirm_events([clean_event()], quiet_console(), ask)
     assert confirmed[0].start_date == date(2026, 9, 8)
 
 
 def test_invalid_time_reprompts():
-    ask = scripted("e", "", "", "25:99", "14:00", "", "", "a")
+    ask = scripted("e", "", "", "25:99", "14:00", "", "", "", "a")
     confirmed = confirm_events([clean_event()], quiet_console(), ask)
     assert confirmed[0].start_time == time(14, 0)
 
@@ -208,3 +208,27 @@ def test_fixture_parses_and_round_trips_through_the_ui():
     # ones are skipped.
     confirmed = confirm_events(result.events, quiet_console(), scripted("", "", "", ""))
     assert [e.title for e in confirmed] == ["General Biology Lecture", "Problem Set 3 due"]
+
+
+def test_address_can_be_edited():
+    ask = scripted("e", "", "", "", "", "", "604 Bartholomew Rd, Piscataway, NJ", "a")
+    confirmed = confirm_events([clean_event()], quiet_console(), ask)
+    assert confirmed[0].address == "604 Bartholomew Rd, Piscataway, NJ"
+
+
+def test_editing_an_event_whose_text_contains_markup_does_not_crash():
+    # The edit prompts quote the current title/location back, and the real
+    # prompt function (console.input) renders them as rich markup -- so "[/]"
+    # there raised MarkupError until the quoted value was escaped.
+    console = quiet_console()
+    answers = iter(["e", "", "", "", "", "", "", "a"])
+
+    def ask_like_console_input(prompt: str) -> str:
+        console.print(prompt, end="")
+        return next(answers)
+
+    event = clean_event(title="Study Group [/]", location="Room [dim]")
+    confirmed = confirm_events([event], console, ask_like_console_input)
+
+    assert confirmed[0].title == "Study Group [/]"
+    assert "keep 'Study Group [/]'" in console.file.getvalue()

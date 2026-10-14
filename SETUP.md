@@ -46,12 +46,18 @@ steps below are just those four, in order.
 6. Agree to the user data policy checkbox, then **Create**.
 7. Now add yourself as a test user: go to the **Audience** page in the left
    sidebar, find the **Test users** section, click **+ Add users**, enter
-   your own Gmail address, and **Save**.
+   the Gmail address **whose calendar you want events on**, and **Save**.
+   If you have more than one Google account, add each one you might sign in
+   with — only listed accounts are allowed in.
    *(Old UI: this was a "Test users" step inside the setup wizard.)*
-8. Important: leave **Publishing status** as **Testing**. Do **not** click
-   "Publish app" — that triggers a Google verification review meant for
-   public apps, which you don't need and don't want for a personal tool.
-   Testing mode works indefinitely for accounts on the test users list.
+8. Leave **Publishing status** as **Testing**. Do **not** click "Publish
+   app" — for an app using your calendar that can start a Google
+   verification review meant for public apps.
+
+   The one cost of Testing mode: Google ends sign-ins after **7 days**. The
+   app handles that for you — when it happens, it says your sign-in expired
+   and asks to sign in again; press Enter, pick your account in the browser,
+   and you're back in. Expect that roughly once a week.
 
 You do **not** need to touch the **Data Access** page (old UI: "Scopes").
 The app requests the Calendar scope directly from the code.
@@ -82,18 +88,20 @@ it only appears once an API is enabled: go back and do step 2 first.
    the project root — the same folder as `requirements.txt`. It's already
    listed in `.gitignore`, so it won't get committed.
 
-## 5. Run the sign-in flow
+## 5. Sign in
 
-```
-python -m syllabus_cal auth
-```
+Double-click `start.command` (macOS) or `start.bat` (Windows). If you're
+not signed in it asks **"Sign in with Google now? (Y/n)"** — press Enter.
 
-This opens your default browser. You'll likely see a warning screen that
-says **"Google hasn't verified this app"** — that's expected for an app in
-Testing mode, not a problem. Click **Advanced**, then **Go to syllabus_cal
-(unsafe)**, then **Continue**/**Allow** to grant Calendar access. The CLI
-will print `Signed in. token.json saved to the project root.` — that file
-(also gitignored) is what lets future runs skip sign-in.
+Your browser opens to Google's account picker: choose the account whose
+calendar you want events on. You'll likely then see **"Google hasn't
+verified this app"** — that's expected for an app in Testing mode, not a
+problem. Click the small **Advanced** link, then **Go to syllabus_cal
+(unsafe)**, then **Continue** to grant Calendar access.
+
+Back in the app you'll see **Connected to Google Calendar:** followed by
+the calendar's name — normally that account's email address. Check it's
+the account you meant. If not, type `switch` and pick the other one.
 
 To also confirm your Calendar can actually be written to, add
 `--test-event`:
@@ -109,9 +117,13 @@ delete — safe to remove once you've confirmed it showed up.
 ## Troubleshooting
 
 **"Access blocked: syllabus_cal has not completed the Google verification
-process"** — Your Google account isn't in the test users list. Go back to
-step 3.7 and add your email under **Google Auth Platform → Audience → Test
-users**.
+process"** — The Google account you picked isn't in the test users list.
+Either pick the account that is, or add this one in step 3.7 under
+**Google Auth Platform → Audience → Test users**.
+
+**"Google Calendar refused the connection ... has not been used in project
+... or it is disabled"** — The Calendar API isn't switched on for your Cloud
+project. Redo step 2.
 
 **"Error 400: invalid_request" or "invalid_client"** — Usually means
 `credentials.json` is missing/wrong, or wasn't created as a **Desktop app**
@@ -121,5 +133,5 @@ client. Re-check step 4.
 desktop OAuth flow needs a real browser on the same machine running the
 command. Run `auth` on your laptop, not over SSH into a headless server.
 
-**Token expired / `auth` says to re-run `auth`** — Just run
-`python -m syllabus_cal auth` again; it overwrites `token.json`.
+**"Your Google sign-in has expired"** — Normal, about once a week (see step
+3.8). Press Enter at the sign-in question and pick your account again.

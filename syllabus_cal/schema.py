@@ -28,6 +28,7 @@ class ExtractedEvent(BaseModel):
     start_time: time | None = None
     end_time: time | None = None
     location: str | None = None
+    address: str | None = None
     recurrence: RecurrenceRule | None = None
     notes: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)

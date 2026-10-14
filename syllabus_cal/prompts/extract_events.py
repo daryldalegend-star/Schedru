@@ -8,10 +8,17 @@ from __future__ import annotations
 
 from datetime import date
 
-EXTRACT_EVENTS_PROMPT = """You are extracting calendar-worthy commitments from an image of a \
-syllabus, flyer, or schedule screenshot.
+# Where events are assumed to be unless the image says otherwise. This is what
+# lets "BSC 120 C" become a place Google Maps can find.
+HOME_CONTEXT = "Rutgers University-New Brunswick (New Brunswick and Piscataway, New Jersey)"
+
+EXTRACT_EVENTS_PROMPT = """You are turning an image of a syllabus, flyer, social-media post, or \
+schedule screenshot into calendar events for a college student. Each event, read later in \
+their calendar, should tell them everything they need: what it is, when, exactly where, and \
+anything worth knowing before they go.
 
 Today's date is {today}.
+The student is at {home_context}. Unless the image says otherwise, assume events are there.
 {semester_context}
 
 Return JSON ONLY. No prose, no explanation, no markdown code fences — your entire response \
@@ -26,6 +33,7 @@ must be a single JSON object that a JSON parser can load directly, matching exac
       "start_time": "HH:MM" | null,
       "end_time": "HH:MM" | null,
       "location": string | null,
+      "address": string | null,
       "recurrence": {{
         "freq": "DAILY" | "WEEKLY" | "BIWEEKLY" | "MONTHLY",
         "days_of_week": ["MO" | "TU" | "WE" | "TH" | "FR" | "SA" | "SU", ...],
@@ -46,7 +54,10 @@ Rules:
 "Tues/Thurs 9:50-11:10", "every other Monday", "MWF"), resolve it into a single event whose \
 "start_date" is the FIRST occurrence on/after today (or the term start, if you can identify \
 one) and whose "recurrence" field carries the pattern. Never emit one event per occurrence. \
-A one-time deadline (an assignment due date, a single exam date) has "recurrence": null.
+A one-time deadline (an assignment due date, a single exam date) has "recurrence": null. \
+A flyer that gives one date for something it calls "weekly" is announcing that one meeting: \
+add that date as a one-time event and mention in "notes" that it meets weekly, rather than \
+creating an open-ended series.
 
 2. FILL IN OBVIOUS GAPS, AND SAY WHAT YOU FILLED IN. When something is unstated but has a \
 clear answer from context, use it and record what you decided in "assumptions" — a short \
@@ -75,11 +86,31 @@ assumptions are added by default; flagged events are skipped by default.
 "event_type": "assignment" with no recurrence. A recurring meeting block (lecture, lab, office \
 hours, club meeting) gets the appropriate "event_type" and a "recurrence" rule.
 
-5. LOCATION GOES IN "location", NOT IN "title". Room numbers, building names, and building \
-abbreviations (e.g. "Busch SEC 118", "Zoom", "Room 204") belong in "location". Keep "title" to \
-the human-readable name of the class/event/deadline only.
+5. MAKE THE PLACE FINDABLE. Rooms, buildings, and abbreviations go in "location" and \
+"address", never in "title".
+   - "location": the place as a person would say it, with abbreviations expanded and the room
+     kept, e.g. "BSC 120 C" -> "Busch Student Center, Room 120C". For an online event, the
+     platform and link if one is shown ("Zoom: https://...").
+   - "address": what a maps app needs to find the place: the street address when you know it
+     reliably, otherwise the campus or venue with city and state, e.g. "Busch Campus, Rutgers
+     University, Piscataway, NJ". Never invent a street number you aren't sure of — a correct
+     city beats a wrong street. null for online events or when no place is given at all.
+   - Any expansion or address you supplied that isn't printed on the image goes in
+     "assumptions", e.g. "BSC = Busch Student Center (Busch campus)".
 
-6. "confidence" reflects how sure you are about the event as a whole (dates, times, and \
+6. "notes" IS WHAT THEY'LL READ BEFORE GOING. It becomes the event's description, so put \
+everything useful from the image there in a few short sentences: who is hosting (club, \
+department, professor, course code), what it is if the title doesn't make that obvious \
+(spell out acronyms like "AMSA"), cost, free food, what to bring, dress code, RSVP or sign-up \
+links, who it's open to, and for coursework what's covered and how to submit. If there's a QR \
+code, say so — you can't read it, but they can scan it. Only state what the image shows plus \
+plainly safe expansions; never invent perks or requirements. null if there's nothing to add.
+
+7. TITLES SHOULD STAND ON THEIR OWN in a calendar grid. Lead with the organizer or course \
+when the image gives one: "Rutgers AI Club: Weekly Meeting", "BIO 101: Midterm Exam" — not \
+just "Weekly Meeting" or "Midterm".
+
+8. "confidence" reflects how sure you are about the event as a whole (dates, times, and \
 recurrence all considered) — not just whether the text was legible.
 
 If the image contains no dated commitments at all, return {{"events": []}}.
@@ -110,5 +141,6 @@ def render_prompt(
 ) -> str:
     return EXTRACT_EVENTS_PROMPT.format(
         today=today.isoformat(),
+        home_context=HOME_CONTEXT,
         semester_context=semester_context_line(semester_start, semester_end),
     )

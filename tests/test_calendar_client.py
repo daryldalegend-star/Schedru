@@ -89,7 +89,8 @@ def test_assumptions_are_recorded_on_the_event_description():
     )
     body = build_event_body(event)
 
-    assert "assumed: 7:30 read as PM" in body["description"]
+    assert "Filled in by syllabus_cal" in body["description"]
+    assert "- 7:30 read as PM (evening club meeting)" in body["description"]
 
 
 def test_recurring_class_includes_rrule_in_body():
@@ -110,7 +111,7 @@ def test_recurring_class_includes_rrule_in_body():
     assert body["recurrence"][0].startswith("RRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=")
 
 
-def test_notes_and_event_type_land_in_description_not_title():
+def test_notes_become_the_description_and_stay_out_of_the_title():
     event = ExtractedEvent(
         title="Robotics Club",
         event_type="club",
@@ -122,8 +123,78 @@ def test_notes_and_event_type_land_in_description_not_title():
     body = build_event_body(event)
 
     assert body["summary"] == "Robotics Club"
-    assert "Bring laptop" in body["description"]
-    assert "[club]" in body["description"]
+    assert body["description"] == "Bring laptop"
+
+
+def test_notes_come_before_the_assumptions_list():
+    event = ExtractedEvent(
+        title="Rutgers AMSA: Medical Jeopardy Night",
+        event_type="club",
+        start_date=date(2026, 9, 22),
+        notes="Hosted by AMSA (American Medical Student Association). Free pizza.",
+        confidence=0.9,
+        assumptions=["BSC = Busch Student Center"],
+    )
+    description = build_event_body(event)["description"]
+
+    assert description.index("Free pizza") < description.index("Filled in by syllabus_cal")
+
+
+def test_no_notes_and_no_assumptions_means_no_description():
+    event = ExtractedEvent(
+        title="Problem Set 3", event_type="assignment",
+        start_date=date(2026, 9, 20), confidence=0.95,
+    )
+    assert "description" not in build_event_body(event)
+
+
+# Location: the calendar field is what Google Maps searches when the event's
+# place is clicked, so it should be the place plus an address.
+
+
+def _placed(location=None, address=None) -> ExtractedEvent:
+    return ExtractedEvent(
+        title="Rutgers AI Club: Weekly Meeting", event_type="club",
+        start_date=date(2026, 9, 24), confidence=0.9,
+        location=location, address=address,
+    )
+
+
+def test_location_and_address_are_joined_for_maps():
+    body = build_event_body(_placed(
+        "Busch Student Center, Room 120C", "Busch Campus, Rutgers University, Piscataway, NJ"
+    ))
+    assert body["location"] == (
+        "Busch Student Center, Room 120C, Busch Campus, Rutgers University, Piscataway, NJ"
+    )
+
+
+def test_address_already_in_the_location_is_not_repeated():
+    body = build_event_body(_placed(
+        "Busch Student Center, Room 120C, Piscataway, NJ", "Piscataway, NJ"
+    ))
+    assert body["location"] == "Busch Student Center, Room 120C, Piscataway, NJ"
+
+
+def test_address_alone_is_used_when_there_is_no_location():
+    body = build_event_body(_placed(None, "Piscataway, NJ"))
+    assert body["location"] == "Piscataway, NJ"
+
+
+def test_no_place_at_all_means_no_location_field():
+    assert "location" not in build_event_body(_placed())
+
+
+def test_an_end_time_before_the_start_means_the_next_day():
+    # "10 PM - 1 AM": Google rejects an end before the start outright.
+    event = ExtractedEvent(
+        title="Late show", event_type="club", start_date=date(2026, 10, 30),
+        start_time=time(22, 0), end_time=time(1, 0), confidence=0.9,
+    )
+    body = build_event_body(event)
+
+    assert body["start"]["dateTime"] == "2026-10-30T22:00:00"
+    assert body["end"]["dateTime"] == "2026-10-31T01:00:00"
 
 
 def test_every_event_gets_the_marker_for_bulk_delete():
