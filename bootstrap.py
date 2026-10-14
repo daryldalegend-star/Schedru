@@ -149,16 +149,6 @@ def main(argv: list[str]) -> int:
             return code
 
     result = subprocess.run([str(venv_python()), "-m", "syllabus_cal", *argv], cwd=ROOT)
-
-    if not argv:
-        print()
-        print("To read a screenshot, run this again with the image, e.g.:")
-        print(
-            "    start.bat parse shot.png"
-            if os.name == "nt"
-            else "    ./start.command parse shot.png"
-        )
-
     return result.returncode
 
 

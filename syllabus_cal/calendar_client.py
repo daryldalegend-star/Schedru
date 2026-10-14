@@ -12,12 +12,14 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
-from google.auth.exceptions import RefreshError
+from google.auth.exceptions import RefreshError, TransportError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from httplib2 import HttpLib2Error
+from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 
 from .rrule import DEFAULT_TZ, TIMEZONE, build_recurrence
 from .schema import ExtractedEvent
@@ -35,67 +37,98 @@ CREATED_BY_MARKER = {"created_by": "syllabus_cal"}
 
 
 class AuthError(RuntimeError):
-    """Missing/expired/invalid Google auth. Always caught at the CLI boundary
-    and shown as a short message pointing at `auth` -- never a raw stack trace."""
+    """The user needs to sign in (again). Recoverable by running the sign-in
+    flow, which the CLI offers inline -- never shown as a stack trace."""
 
 
-def is_authenticated() -> bool:
-    return TOKEN_PATH.exists()
+class GoogleConnectionError(RuntimeError):
+    """Google couldn't be reached or refused for a reason signing in again
+    won't fix (no internet, Calendar API disabled)."""
 
 
 def run_auth_flow() -> Credentials:
     """Run the InstalledAppFlow (opens a browser) and persist token.json."""
     if not CREDENTIALS_PATH.exists():
-        raise AuthError(
-            f"'{CREDENTIALS_PATH.name}' not found in the project root. Follow SETUP.md to "
-            "create OAuth Desktop App credentials in Google Cloud Console and download it "
-            "there before running `auth`."
+        raise GoogleConnectionError(
+            f"'{CREDENTIALS_PATH.name}' isn't in {_PROJECT_ROOT}. It's the file you "
+            "download at the end of SETUP.md step 4 -- put it in this folder, next to "
+            "start.command."
         )
     flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_PATH), SCOPES)
-    creds = flow.run_local_server(port=0)
+    try:
+        # select_account: always show the account picker, so signing in can't
+        # silently reuse whichever Google account the browser happens to be on.
+        # consent: Google otherwise issues a refresh token only on the first
+        # grant, so signing in again could yield a token that dies an hour later.
+        creds = flow.run_local_server(port=0, prompt="select_account consent")
+    except OAuth2Error as exc:
+        raise GoogleConnectionError(
+            f"Google didn't grant access ({exc.description or exc.error}). If the browser "
+            "said \"Access blocked\", the account you picked isn't on this app's test-user "
+            "list: add it under Google Auth Platform -> Audience -> Test users (SETUP.md "
+            "step 3), or pick the account that's already there."
+        ) from exc
     TOKEN_PATH.write_text(creds.to_json())
     return creds
 
 
 def load_credentials() -> Credentials:
-    """Load saved credentials, refreshing an expired token if possible.
-
-    Raises AuthError (never lets an oauth stack trace escape) when the user
-    needs to re-run `auth`: no token yet, or refresh failed/impossible.
-    """
+    """Load saved credentials, refreshing an expired access token if possible."""
     if not TOKEN_PATH.exists():
-        raise AuthError("Not signed in yet. Run `python -m syllabus_cal auth` first.")
+        raise AuthError("You're not signed in to Google yet.")
 
     try:
         creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
     except (ValueError, OSError) as exc:
-        raise AuthError(
-            f"'{TOKEN_PATH.name}' is corrupted or unreadable ({exc}). Run "
-            "`python -m syllabus_cal auth` again."
-        ) from exc
+        raise AuthError("Your saved Google sign-in is unreadable.") from exc
 
     if creds.valid:
         return creds
 
-    if creds.expired and creds.refresh_token:
-        try:
-            creds.refresh(Request())
-        except RefreshError as exc:
-            raise AuthError(
-                "Your Google sign-in expired and couldn't be refreshed. Run "
-                "`python -m syllabus_cal auth` again."
-            ) from exc
-        TOKEN_PATH.write_text(creds.to_json())
-        return creds
+    if not creds.refresh_token:
+        raise AuthError("Your saved Google sign-in is incomplete.")
 
-    raise AuthError(
-        "Your Google sign-in is invalid or incomplete. Run `python -m syllabus_cal auth` again."
-    )
+    try:
+        creds.refresh(Request())
+    except RefreshError as exc:
+        # Google caps sign-ins for apps in "Testing" mode at 7 days, so this is
+        # the expected weekly path, not a fault.
+        raise AuthError(
+            "Your Google sign-in has expired. (Google makes personal apps like this "
+            "one sign in again every 7 days.)"
+        ) from exc
+    except TransportError as exc:
+        raise GoogleConnectionError(
+            "Couldn't reach Google to renew your sign-in -- check your internet connection."
+        ) from exc
+
+    TOKEN_PATH.write_text(creds.to_json())
+    return creds
 
 
-def get_calendar_service(creds: Credentials | None = None):
-    creds = creds or load_credentials()
-    return build("calendar", "v3", credentials=creds)
+def connect() -> tuple[Any, str]:
+    """Return (Calendar service, calendar name) for a connection that works.
+
+    Makes one real Calendar request rather than trusting the token file, so a
+    revoked grant or a disabled API is caught before the screenshot is sent to
+    Claude. The primary calendar's name is normally the account's email, which
+    tells the user which Google account events are going to.
+    """
+    creds = load_credentials()
+    service = build("calendar", "v3", credentials=creds)
+    try:
+        listing = service.events().list(calendarId="primary", maxResults=1).execute()
+    except HttpError as exc:
+        if exc.resp.status == 401:
+            raise AuthError("Google no longer accepts your saved sign-in.") from exc
+        raise GoogleConnectionError(
+            f"Google Calendar refused the connection: {_readable_error(exc)}"
+        ) from exc
+    except (HttpLib2Error, TransportError, OSError) as exc:
+        raise GoogleConnectionError(
+            "Couldn't reach Google Calendar -- check your internet connection."
+        ) from exc
+    return service, listing.get("summary", "your Google Calendar")
 
 
 def _event_datetime(d: date, t: time) -> dict[str, str]:
@@ -104,6 +137,27 @@ def _event_datetime(d: date, t: time) -> dict[str, str]:
 
 def _event_date(d: date) -> dict[str, str]:
     return {"date": d.isoformat()}
+
+
+def calendar_location(event: ExtractedEvent) -> str | None:
+    """The place plus its address, as one string Google Maps can resolve."""
+    parts = [event.location, event.address]
+    if event.location and event.address and event.address.lower() in event.location.lower():
+        parts = [event.location]
+    joined = ", ".join(p for p in parts if p)
+    return joined or None
+
+
+def _description(event: ExtractedEvent) -> str | None:
+    lines = [event.notes] if event.notes else []
+    if event.assumptions:
+        if lines:
+            lines.append("")
+        # Kept on the event itself so a wrong guess is catchable later, in
+        # Calendar, rather than only at the confirmation prompt.
+        lines.append("Filled in by syllabus_cal (check these):")
+        lines.extend(f"- {assumed}" for assumed in event.assumptions)
+    return "\n".join(lines) or None
 
 
 def build_event_body(event: ExtractedEvent) -> dict[str, Any]:
@@ -115,17 +169,13 @@ def build_event_body(event: ExtractedEvent) -> dict[str, Any]:
         "extendedProperties": {"private": dict(CREATED_BY_MARKER)},
     }
 
-    if event.location:
-        body["location"] = event.location
+    location = calendar_location(event)
+    if location:
+        body["location"] = location
 
-    description = [f"[{event.event_type}]"]
-    if event.notes:
-        description.append(event.notes)
-    # Surfaced on the event itself so a wrong guess is catchable later, in
-    # Calendar, rather than only at the confirmation prompt.
-    for assumed in event.assumptions:
-        description.append(f"(assumed: {assumed})")
-    body["description"] = " ".join(description)
+    description = _description(event)
+    if description:
+        body["description"] = description
 
     if event.start_time is None:
         body["start"] = _event_date(event.start_date)
@@ -141,6 +191,10 @@ def build_event_body(event: ExtractedEvent) -> dict[str, Any]:
             if event.end_time
             else start + timedelta(hours=1)
         )
+        if end <= start:
+            # "10 PM - 1 AM": the end is on the next day. Google rejects an
+            # end before the start outright.
+            end += timedelta(days=1)
         body["start"] = {"dateTime": start.isoformat(), "timeZone": TIMEZONE}
         body["end"] = {"dateTime": end.isoformat(), "timeZone": TIMEZONE}
 
@@ -178,9 +232,8 @@ class WriteOutcome:
 def _readable_error(exc: Exception) -> str:
     if isinstance(exc, HttpError):
         reason = getattr(exc, "reason", None)
-        status = getattr(exc, "status_code", None)
-        if reason:
-            return f"{reason}" + (f" (HTTP {status})" if status else "")
+        status = exc.resp.status
+        return f"{reason} (HTTP {status})" if reason else f"HTTP {status}"
     return f"{type(exc).__name__}: {exc}"
 
 
@@ -206,8 +259,7 @@ def write_events(
 
 def create_hardcoded_test_event(service, calendar_id: str = "primary") -> dict[str, Any]:
     """Write one fixed event, tomorrow at 9:00-9:30 local time, to prove the
-    OAuth + Calendar API write path works end to end. Used by `auth --test-event`;
-    not part of the real parse -> confirm -> write pipeline (that's step 5)."""
+    OAuth + Calendar API write path works end to end. Used by `auth --test-event`."""
     tomorrow = date.today() + timedelta(days=1)
     body = {
         "summary": "syllabus_cal test event",

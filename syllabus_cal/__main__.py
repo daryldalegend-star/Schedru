@@ -1,12 +1,8 @@
 """CLI entry point: python -m syllabus_cal [parse|auth] ...
 
-Running with no subcommand shows a short tutorial and, if you're not signed
-in to Google yet, offers to run the sign-in flow right there.
-
-Build status: `parse --dry-run` (image -> validated JSON) and `auth`
-(Google sign-in, optionally writing one test event) are both live. Writing
-real extracted events to Calendar needs the confirmation UI and end-to-end
-wiring, which are later build steps.
+Running with no subcommand (what start.command does) shows a short tutorial,
+makes sure Google Calendar is connected -- signing in if needed -- and then
+asks for a screenshot by drag-and-drop.
 """
 
 from __future__ import annotations
@@ -29,31 +25,36 @@ from .schema import CONFIDENCE_REVIEW_THRESHOLD, ExtractionResult
 console = Console()
 err_console = Console(stderr=True)
 
-TUTORIAL_TEXT = """[bold]syllabus_cal[/bold] turns a screenshot of a syllabus, club flyer, or \
-schedule email into Google Calendar events.
+TUTORIAL_TEXT = """[bold]syllabus_cal[/bold] turns a screenshot of a syllabus, club flyer, \
+Instagram post, or schedule email into Google Calendar events.
 
-The intended flow:
-  1. [bold]parse[/bold] an image -- Claude reads it and extracts every dated commitment
-  2. you review what it found (anything uncertain is flagged, never guessed)
-  3. confirmed events get written to your Google Calendar
+  1. Drag a screenshot into this window and press Enter.
+  2. Claude reads it and fills in what you'd want to know: the full place and
+     address (so Maps can find it), the time, and the useful details.
+  3. You check each event -- [bold]a[/bold] add, [bold]e[/bold] edit, [bold]s[/bold] skip -- and it goes on
+     your calendar.
 
-[bold]Commands:[/bold]
-  [cyan]python -m syllabus_cal parse <image>[/cyan]
-      The main one. Reads the image, shows you what it found, asks about each
-      event (add / edit / skip), then writes the ones you approved.
-      Add --semester-start/--semester-end (YYYY-MM-DD) to help it resolve
-      recurring "until" dates.
+Anything it filled in itself is marked [yellow]~[/yellow] so you can check it. Anything it
+couldn't work out is marked [red]![/red] and skipped unless you say otherwise.
+[bold]Nothing is added without your yes.[/bold]"""
 
-  [cyan]python -m syllabus_cal parse <image> --dry-run[/cyan]
-      Same extraction, but just prints the results and stops. Never touches
-      your calendar. Good for checking what it sees before committing.
 
-  [cyan]python -m syllabus_cal auth[/cyan]
-      Sign in with your Google account (opens a browser). Add --test-event to
-      also write one throwaway event confirming it works.
+def _error(message: object) -> None:
+    # Messages can carry text from Claude or Google, which rich would
+    # otherwise try to read as markup (and crash on, for "[/]").
+    err_console.print(f"[red]{escape(str(message))}[/red]")
 
-[bold]Nothing is ever written without you saying yes to it.[/bold] Anything the model
-wasn't sure about is flagged and defaults to being skipped."""
+
+def _ask_yes(question: str, default: bool) -> bool:
+    hint = "(Y/n)" if default else "(y/N)"
+    try:
+        answer = console.input(f"{question} {hint} ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        console.print()
+        return False
+    if not answer:
+        return default
+    return answer in ("y", "yes")
 
 
 def _parse_date(value: str) -> date:
@@ -83,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--semester-end", type=_parse_date, default=None, metavar="YYYY-MM-DD"
     )
 
-    auth_cmd = subparsers.add_parser("auth", help="Run the Google Calendar OAuth flow")
+    auth_cmd = subparsers.add_parser("auth", help="Sign in with Google (or switch accounts)")
     auth_cmd.add_argument(
         "--test-event",
         action="store_true",
@@ -94,6 +95,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _render_events_table(result: ExtractionResult) -> None:
+    from .calendar_client import calendar_location
+
     if not result.events:
         console.print("[yellow]No dated commitments found in this image.[/yellow]")
         return
@@ -105,7 +108,7 @@ def _render_events_table(result: ExtractionResult) -> None:
     table.add_column("Start")
     table.add_column("Time")
     table.add_column("Recurrence")
-    table.add_column("Location")
+    table.add_column("Where")
     table.add_column("Confidence")
     table.add_column("Assumed / flagged")
 
@@ -136,8 +139,8 @@ def _render_events_table(result: ExtractionResult) -> None:
             event.event_type,
             str(event.start_date),
             time_str,
-            recurrence_str,
-            escape(event.location or "-"),
+            escape(recurrence_str),
+            escape(calendar_location(event) or "-"),
             confidence_str,
             escape(
                 "; ".join(
@@ -151,27 +154,39 @@ def _render_events_table(result: ExtractionResult) -> None:
     console.print(table)
 
 
-def _ensure_signed_in() -> bool:
-    """Offer to run sign-in if there's no token yet. True if we're good to write."""
-    from .calendar_client import is_authenticated
+def _sign_in():
+    """Run the browser sign-in, then connect. (service, calendar name) or None."""
+    from .calendar_client import AuthError, GoogleConnectionError, connect, run_auth_flow
 
-    if is_authenticated():
-        return True
-
-    console.print(
-        "[yellow]You're not signed in to Google yet[/yellow] — that's needed before "
-        "anything can be written to your calendar."
-    )
+    console.print("Opening your browser to sign in with Google...")
     try:
-        answer = console.input("Sign in with Google now? (y/N) ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        console.print()
-        return False
+        run_auth_flow()
+        return connect()
+    except (AuthError, GoogleConnectionError) as exc:
+        _error(exc)
+        return None
 
-    if answer not in ("y", "yes"):
-        return False
 
-    return cmd_auth(argparse.Namespace(test_event=False)) == 0
+def _connect_calendar():
+    """A working (service, calendar name), signing in first if needed. None if not."""
+    from .calendar_client import AuthError, GoogleConnectionError, connect
+
+    try:
+        return connect()
+    except GoogleConnectionError as exc:
+        _error(exc)
+        return None
+    except AuthError as exc:
+        console.print(f"[yellow]{escape(str(exc))}[/yellow]")
+
+    if not _ask_yes("Sign in with Google now?", default=True):
+        console.print("No problem — you'll be asked to sign in again next time.")
+        return None
+    return _sign_in()
+
+
+def _show_connected(calendar_name: str) -> None:
+    console.print(f"[green]Connected to Google Calendar: {escape(calendar_name)}[/green]")
 
 
 def _render_write_summary(outcomes) -> None:
@@ -184,7 +199,7 @@ def _render_write_summary(outcomes) -> None:
         for outcome in created:
             link = outcome.link or "(no link returned)"
             console.print(f"  • {escape(outcome.event.title)}")
-            console.print(f"    {link}")
+            console.print(f"    {escape(link)}")
 
     if failed:
         console.print()
@@ -198,45 +213,56 @@ def _render_write_summary(outcomes) -> None:
         )
 
 
-def cmd_parse(args: argparse.Namespace) -> int:
+def _load_api_key() -> str | None:
+    """The Anthropic key from .env, or None after explaining what's wrong with it."""
     load_dotenv()
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
-        err_console.print(
-            "[red]ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your "
-            "key.[/red]"
+        _error("ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your key.")
+        return None
+    if "..." in api_key or "…" in api_key:
+        # After creation the console only ever shows a preview like
+        # "sk-ant-api03-Ggj...hAAA", and copying that is an easy mistake.
+        _error(
+            "Your .env has the shortened preview of your API key (the one with '...' in "
+            "the middle), not the key itself. Anthropic shows the full key only once, "
+            "when you create it: make a new key at console.anthropic.com -> API keys, "
+            "copy it from that dialog, and paste it into .env."
         )
+        return None
+    return api_key
+
+
+def cmd_parse(args: argparse.Namespace) -> int:
+    api_key = _load_api_key()
+    if api_key is None:
         return 2
 
-    # Check auth before the vision call so a sign-in problem doesn't cost an
-    # API request, same reasoning as validating the image up front.
-    if not args.dry_run and not _ensure_signed_in():
-        err_console.print(
-            "[red]Not signed in, so nothing can be written. Run "
-            "`python -m syllabus_cal auth`, or use --dry-run to just see what's in "
-            "the image.[/red]"
-        )
-        return 2
+    calendar = None
+    if not args.dry_run:
+        # Before the vision call, so a sign-in problem doesn't cost a request.
+        calendar = _connect_calendar()
+        if calendar is None:
+            _error("Not connected to Google Calendar, so nothing can be added.")
+            return 2
 
     from anthropic import Anthropic
 
-    from .vision import ExtractionError, ImageError, extract_events
+    from .vision import ClaudeAPIError, ExtractionError, ImageError, extract_events
 
     client = Anthropic(api_key=api_key)
 
     try:
-        result = extract_events(
-            args.image,
-            client,
-            today=date.today(),
-            semester_start=args.semester_start,
-            semester_end=args.semester_end,
-        )
-    except ImageError as exc:
-        err_console.print(f"[red]{exc}[/red]")
-        return 1
-    except ExtractionError as exc:
-        err_console.print(f"[red]{exc}[/red]")
+        with console.status("Reading the screenshot..."):
+            result = extract_events(
+                args.image,
+                client,
+                today=date.today(),
+                semester_start=args.semester_start,
+                semester_end=args.semester_end,
+            )
+    except (ImageError, ExtractionError, ClaudeAPIError) as exc:
+        _error(exc)
         return 1
 
     if args.dry_run:
@@ -248,7 +274,7 @@ def cmd_parse(args: argparse.Namespace) -> int:
         console.print("[yellow]No dated commitments found in this image.[/yellow]")
         return 0
 
-    from .calendar_client import AuthError, get_calendar_service, write_events
+    from .calendar_client import write_events
     from .confirm import ConfirmationAborted, confirm_events
 
     try:
@@ -261,12 +287,7 @@ def cmd_parse(args: argparse.Namespace) -> int:
         console.print("[yellow]Nothing confirmed, so nothing was written.[/yellow]")
         return 0
 
-    try:
-        service = get_calendar_service()
-    except AuthError as exc:
-        err_console.print(f"[red]{exc}[/red]")
-        return 1
-
+    service, _ = calendar
     outcomes = write_events(service, confirmed)
     _render_write_summary(outcomes)
 
@@ -274,30 +295,23 @@ def cmd_parse(args: argparse.Namespace) -> int:
 
 
 def cmd_auth(args: argparse.Namespace) -> int:
-    from .calendar_client import AuthError, create_hardcoded_test_event, get_calendar_service, run_auth_flow
-
-    console.print("Opening your browser to sign in with Google...")
-    try:
-        run_auth_flow()
-    except AuthError as exc:
-        err_console.print(f"[red]{exc}[/red]")
+    calendar = _sign_in()
+    if calendar is None:
         return 1
+    service, calendar_name = calendar
+    _show_connected(calendar_name)
 
-    console.print("[green]Signed in. token.json saved to the project root.[/green]")
+    if args.test_event:
+        from .calendar_client import create_hardcoded_test_event
 
-    if getattr(args, "test_event", False):
         try:
-            service = get_calendar_service()
             created = create_hardcoded_test_event(service)
-        except AuthError as exc:
-            err_console.print(f"[red]{exc}[/red]")
-            return 1
         except Exception as exc:  # googleapiclient.errors.HttpError, network errors, etc.
-            err_console.print(f"[red]Signed in, but writing the test event failed: {exc}[/red]")
+            _error(f"Signed in, but writing the test event failed: {exc}")
             return 1
 
         link = created.get("htmlLink", "(no link returned)")
-        console.print(f"[green]Test event created:[/green] {link}")
+        console.print(f"[green]Test event created:[/green] {escape(link)}")
         console.print("It's tomorrow at 9:00-9:30 AM, tagged as syllabus_cal test data. Safe to delete.")
 
     return 0
@@ -319,7 +333,9 @@ def _prompt_for_screenshot() -> int:
     """Ask for an image by drag-and-drop, then run the normal parse flow."""
     console.print()
     console.print("[bold]Drag your screenshot into this window, then press Enter.[/bold]")
-    console.print("[dim](Or just press Enter to quit.)[/dim]")
+    console.print(
+        "[dim](Type 'switch' to use a different Google account, or press Enter to quit.)[/dim]"
+    )
 
     try:
         answer = console.input("> ").strip()
@@ -329,6 +345,13 @@ def _prompt_for_screenshot() -> int:
 
     if not answer:
         return 0
+
+    if answer.lower() == "switch":
+        calendar = _sign_in()
+        if calendar is None:
+            return 1
+        _show_connected(calendar[1])
+        return _prompt_for_screenshot()
 
     return cmd_parse(
         argparse.Namespace(
@@ -341,45 +364,33 @@ def _prompt_for_screenshot() -> int:
 
 
 def cmd_tutorial(args: argparse.Namespace) -> int:
-    from .calendar_client import is_authenticated
-
     console.print(Panel(TUTORIAL_TEXT, title="syllabus_cal", border_style="cyan", expand=False))
+    console.print()
 
-    if is_authenticated():
-        console.print("\n[green]You're already signed in to Google.[/green]")
-        return _prompt_for_screenshot()
+    # Checked up front: otherwise a bad key only surfaces after signing in to
+    # Google and dragging a screenshot in, which then has to be done again.
+    if _load_api_key() is None:
+        return 2
 
-    console.print(
-        "\n[yellow]You're not signed in to Google yet.[/yellow] You'll need to be before "
-        "anything can be written to your calendar. (--dry-run works either way.)"
-    )
-    try:
-        answer = console.input("Sign in with Google now? (y/N) ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        console.print()
-        answer = "n"
+    calendar = _connect_calendar()
+    if calendar is None:
+        return 0
 
-    if answer == "y":
-        code = cmd_auth(argparse.Namespace(test_event=False))
-        return _prompt_for_screenshot() if code == 0 else code
-
-    console.print("No problem — run [bold]python -m syllabus_cal auth[/bold] whenever you're ready.")
-    return 0
+    _show_connected(calendar[1])
+    return _prompt_for_screenshot()
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command is None:
-        return cmd_tutorial(args)
-    if args.command == "parse":
-        return cmd_parse(args)
-    if args.command == "auth":
-        return cmd_auth(args)
-
-    parser.print_help()
-    return 1
+    commands = {None: cmd_tutorial, "parse": cmd_parse, "auth": cmd_auth}
+    try:
+        return commands[args.command](args)
+    except KeyboardInterrupt:
+        # Ctrl-C while waiting on Claude or the browser sign-in.
+        console.print("\nCancelled.")
+        return 130
 
 
 if __name__ == "__main__":

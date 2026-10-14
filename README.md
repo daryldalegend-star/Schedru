@@ -1,9 +1,28 @@
 # syllabus_cal
 
 Screenshot → Google Calendar pipeline. Point it at an image of a syllabus,
-club flyer, or schedule email; it extracts every dated commitment, shows you
-what it found, and (once later build steps land) writes confirmed events to
-your Google Calendar.
+club flyer, Instagram post, or schedule email; it extracts every dated
+commitment, fills in what you'd need to know, shows you what it found, and
+writes the events you confirm to your Google Calendar.
+
+## What it fills in
+
+Each event is written so it makes sense on its own when you look at it later:
+
+- **Where**, findable in Maps: abbreviations expanded and an address added,
+  e.g. `BSC 120 C` → `Busch Student Center, Room 120C, Busch Campus, Rutgers
+  University, Piscataway, NJ`. It assumes Rutgers–New Brunswick unless the
+  image says otherwise (`HOME_CONTEXT` in `syllabus_cal/prompts/extract_events.py`).
+- **When**: AM/PM, a missing end time, or a missing year are filled in from
+  context — a bare `7:30` on a club flyer is evening.
+- **What to know**: who's hosting, acronyms spelled out, cost, free food,
+  what to bring, RSVP links, a QR code to scan — whatever the image shows.
+- **A title that stands alone**: `Rutgers AI Club: Weekly Meeting`, not
+  `Weekly Meeting`.
+
+Everything it filled in rather than read is listed with a `~` at the
+confirmation step and again in the event's description, so a wrong guess is
+easy to spot.
 
 ## Status: complete (all 5 build steps)
 
@@ -81,6 +100,11 @@ python -m syllabus_cal auth                               # Google sign-in
 python -m syllabus_cal auth --test-event                  # sign-in + one throwaway event
 ```
 
+Double-clicking the launcher runs the first line: it checks Google Calendar
+is connected (signing you in if needed), shows **Connected to Google
+Calendar:** and the account, then asks you to drag in a screenshot. Type
+`switch` there to use a different Google account.
+
 `parse` reads the image, shows what it found grouped by confidence, walks
 you through each event with **(a)dd / (e)dit / (s)kip**, then writes only
 what you approved and prints a link to each one.
@@ -88,9 +112,14 @@ what you approved and prints a link to each one.
 `--semester-start` / `--semester-end` (YYYY-MM-DD) are optional; they help
 the model resolve recurring "until" dates.
 
-**Nothing is written without an explicit yes.** Events with confidence
-below 0.8 or any ambiguity flag default to *skip*, so holding Enter through
-the list never adds a guessed event.
+**Nothing is written without an explicit yes.** Events whose gaps it could
+fill in sensibly (`~`) default to *add*. Events with something it genuinely
+couldn't work out (`!`, or confidence below 0.8) default to *skip*, so
+holding Enter through the list never adds a real guess.
+
+Google signs you out about **once a week** — a limit on personal apps in
+Google's "Testing" mode (see SETUP.md 3.8). The app notices, says so, and
+asks to sign in again; press Enter and pick your account.
 
 If a write fails partway through a batch, the summary lists exactly which
 events landed and which didn't — re-run and skip the ones already created
@@ -101,15 +130,17 @@ Every event created carries `extendedProperties.private.created_by =
 
 ## What's verified, and what isn't
 
-72 automated tests cover the schema, the RRULE builder (including the DST
-boundary), event-body construction, the confirmation UI, first-run setup
-(including rejecting Python 3.9), and the full parse → confirm → write
-path with the Anthropic and Google calls faked.
+Automated tests cover the schema, the RRULE builder (including the DST
+boundary), event-body construction (addresses, overnight events), the
+confirmation UI, Google sign-in and its weekly expiry, plain-language
+handling of every Anthropic API failure, image preparation (HEIC, rotated
+phone photos), first-run setup, and the full parse → confirm → write path —
+with the Anthropic and Google calls faked.
 
-**Never exercised against the real services**: the browser OAuth round-trip
-and an actual write landing on a real Google calendar. Those need your
-credentials, so the first real run is the first real test. Start with
-`auth --test-event` before trusting it with a full syllabus.
+**Never exercised against the real services**: a real Claude reply, the
+browser OAuth round-trip, and an actual write landing on a real Google
+calendar. Those need your accounts, so the first real run is the first real
+test. Start with `auth --test-event` before trusting it with a full syllabus.
 
 **Neither launcher has run on its real OS** — this was built on Linux, so
 `start.bat` has never seen `cmd.exe`, and `start.command` has been run
@@ -126,10 +157,9 @@ syllabus page, a club flyer, a schedule email) and check:
 - Does the table it prints match what's actually in the image?
 - Are recurring class times resolved into one row with a recurrence
   pattern, instead of one row per class meeting?
-- For anything the image doesn't state clearly (no stated end date, unclear
-  AM/PM, etc.), does that row get flagged (`REVIEW`, red confidence, and a
-  note in "Ambiguity flags") instead of Claude silently guessing?
-- Are room numbers/buildings landing in "Location", not stuck in the title?
+- Is everything it filled in listed with a `~`, and does each one look
+  right — especially AM/PM and expanded building names?
+- Does the "Where" column name a real place you could find on a map?
 
 If something's wrong, the fix is almost always in
 `syllabus_cal/prompts/extract_events.py` (the vision prompt) rather than in
@@ -137,13 +167,14 @@ the pipeline code — that's why the prompt was kept as a standalone module.
 
 **Google auth.** After completing `SETUP.md`:
 
-- `python -m syllabus_cal auth` — should open your browser, let you pick
-  your Google account, and finish with `Signed in. token.json saved...`.
+- `python -m syllabus_cal auth` — should open your browser to Google's
+  account picker and finish with `Connected to Google Calendar:` and the
+  account you picked.
 - `python -m syllabus_cal auth --test-event` — should additionally print a
   link to a real event on your calendar, tomorrow at 9:00–9:30 AM. Open the
   link and confirm it's actually there, then delete it.
-- Delete or rename `token.json` and re-run something that needs it — you
-  should get a plain "run `auth` again" message, never a stack trace.
+- Delete or rename `token.json` and launch again — it should say you're not
+  signed in and offer to sign in, never show a stack trace.
 
 **The full flow.** `parse` a real screenshot without `--dry-run`, confirm
 one or two events, and check they appear on your calendar correctly —

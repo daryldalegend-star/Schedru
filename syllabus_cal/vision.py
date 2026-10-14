@@ -8,8 +8,9 @@ import json
 from datetime import date
 from pathlib import Path
 
+import anthropic
 from anthropic import Anthropic
-from PIL import Image
+from PIL import Image, ImageOps
 from pydantic import ValidationError
 
 from .prompts.extract_events import render_prompt
@@ -24,7 +25,14 @@ except ImportError:
 
 MODEL = "claude-sonnet-5"
 MAX_BYTES = 5 * 1024 * 1024
-MAX_OUTPUT_TOKENS = 4096
+# Sonnet 5 thinks before answering by default, and thinking counts against
+# this cap -- 4k could cut a long syllabus off mid-JSON. Only tokens actually
+# generated are billed, so a high ceiling costs nothing unless it's used.
+MAX_OUTPUT_TOKENS = 16000
+
+# What the Messages API accepts. HEIC (iPhone photos) isn't one of them.
+_API_MEDIA_TYPES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif"})
+_EXIF_ORIENTATION = 0x0112
 
 _EXT_TO_MEDIA_TYPE = {
     ".png": "image/png",
@@ -46,10 +54,21 @@ class ExtractionError(RuntimeError):
     """Raised when Claude's response can't be turned into valid events."""
 
 
+class ClaudeAPIError(RuntimeError):
+    """Anthropic's API refused or failed the request, explained in plain language."""
+
+
+def _encode_jpeg(image: Image.Image) -> bytes:
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=85)
+    return buffer.getvalue()
+
+
 def load_and_prepare_image(path: Path) -> tuple[bytes, str]:
     """Validate `path` and return (bytes, media_type) ready to base64-encode.
 
-    Downscales and re-encodes as JPEG if the file is over MAX_BYTES.
+    Re-encodes as JPEG when the API wouldn't accept the file as-is: over
+    MAX_BYTES, a format it doesn't take (HEIC), or a photo stored rotated.
     """
     if not path.exists():
         raise ImageError(f"No such file: {path}")
@@ -72,22 +91,24 @@ def load_and_prepare_image(path: Path) -> tuple[bytes, str]:
 
     raw_bytes = path.read_bytes()
     media_type = _EXT_TO_MEDIA_TYPE[ext]
+    upright = image.getexif().get(_EXIF_ORIENTATION, 1) == 1
 
-    if len(raw_bytes) <= MAX_BYTES:
+    if len(raw_bytes) <= MAX_BYTES and media_type in _API_MEDIA_TYPES and upright:
         return raw_bytes, media_type
 
+    # Phone photos record rotation as a tag rather than in the pixels; apply it
+    # so Claude isn't handed a flyer lying on its side.
+    image = ImageOps.exif_transpose(image)
     if image.mode not in ("RGB", "L"):
         image = image.convert("RGB")
 
+    encoded = _encode_jpeg(image)
     scale = 0.9
-    encoded = raw_bytes
     while len(encoded) > MAX_BYTES and max(image.size) > 200:
         image = image.resize(
             (max(1, int(image.width * scale)), max(1, int(image.height * scale)))
         )
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=85)
-        encoded = buffer.getvalue()
+        encoded = _encode_jpeg(image)
 
     if len(encoded) > MAX_BYTES:
         raise ImageError(
@@ -97,27 +118,78 @@ def load_and_prepare_image(path: Path) -> tuple[bytes, str]:
     return encoded, "image/jpeg"
 
 
+def _api_error_message(exc: anthropic.APIStatusError) -> str:
+    """The API's own human-readable message, without the SDK's raw-dict wrapping."""
+    body = exc.body
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict) and error.get("message"):
+            return str(error["message"])
+    return exc.message
+
+
 def _call_claude(client: Anthropic, image_b64: str, media_type: str, prompt: str) -> str:
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=MAX_OUTPUT_TOKENS,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": image_b64,
+    try:
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=MAX_OUTPUT_TOKENS,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": image_b64,
+                            },
                         },
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ],
-    )
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+        )
+    except anthropic.AuthenticationError as exc:
+        raise ClaudeAPIError(
+            "Anthropic rejected your API key. It may be mistyped, deleted, or expired "
+            "(keys can be created with an expiry date). Make a new one at "
+            "console.anthropic.com -> API keys, copy it from the dialog that appears, "
+            "and paste it into .env."
+        ) from exc
+    except anthropic.PermissionDeniedError as exc:
+        raise ClaudeAPIError(f"Your API key isn't allowed to do this: {_api_error_message(exc)}") from exc
+    except anthropic.NotFoundError as exc:
+        raise ClaudeAPIError(
+            f"The model '{MODEL}' isn't available to your account any more. "
+            f"Anthropic said: {_api_error_message(exc)}"
+        ) from exc
+    except anthropic.RateLimitError as exc:
+        raise ClaudeAPIError(
+            "Anthropic is limiting how fast you can send requests. Wait a minute and try again."
+        ) from exc
+    except anthropic.BadRequestError as exc:
+        # Also how an empty account balance arrives, with the API's own
+        # explanation of where to add credit.
+        raise ClaudeAPIError(f"Anthropic refused the request: {_api_error_message(exc)}") from exc
+    except anthropic.APIStatusError as exc:
+        raise ClaudeAPIError(
+            f"Anthropic had a problem on their end (HTTP {exc.status_code}). "
+            "Try again in a few minutes."
+        ) from exc
+    except anthropic.APIConnectionError as exc:
+        raise ClaudeAPIError("Couldn't reach Anthropic -- check your internet connection.") from exc
+
+    # Checked before reading the text: a truncated reply fails JSON parsing,
+    # and the parse-error retry would just be truncated again, at full price.
+    if response.stop_reason == "max_tokens":
+        raise ExtractionError(
+            "This image has more events than fit in one reply. Crop it into two "
+            "screenshots and run each one."
+        )
+    if response.stop_reason == "refusal":
+        raise ExtractionError("Claude declined to read this image.")
+
     return "".join(block.text for block in response.content if block.type == "text")
 
 
