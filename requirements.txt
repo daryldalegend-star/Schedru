@@ -10,3 +10,7 @@ pillow-heif>=0.15.0
 # Windows ships no IANA timezone database, so zoneinfo.ZoneInfo() raises at
 # import there without this. Unused on macOS/Linux, which have a system one.
 tzdata>=2024.1
+# The app window and the global shortcut. macOS only for now: elsewhere the
+# app falls back to opening in the default browser.
+pywebview>=6.2; sys_platform == "darwin"
+quickmachotkey>=2025.7.28; sys_platform == "darwin"
