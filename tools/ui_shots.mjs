@@ -185,6 +185,8 @@ async function main() {
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await page.waitForSelector("#capture-button");
       check((await page.textContent("#capture-button")).includes("Capture from screen"), "home leads with the capture button on a Mac");
+      // The "key saved" note from a moment ago doesn't belong in this picture.
+      await page.evaluate(() => document.querySelectorAll(".toast").forEach((toast) => toast.remove()));
       await shot("09b-home-mac");
       await page.unroute("**/api/status");
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
