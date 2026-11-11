@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import socketserver
 import threading
 import urllib.error
 import urllib.request
@@ -29,6 +30,14 @@ from syllabus_cal.calendar_client import MISSING_CALENDAR_PERMISSION, SCOPES
 
 CLIENT_ID = "1234-abc.apps.googleusercontent.com"
 CLIENT_SECRET = "not-a-real-secret"
+
+
+class _NoLookupServer(HTTPServer):
+    def server_bind(self):
+        # The stock HTTPServer asks DNS for its own name here, which costs
+        # about 35 seconds on a Mac (the very thing the app's servers avoid).
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 class PretendGoogle:
@@ -65,7 +74,7 @@ class PretendGoogle:
             def log_message(self, *args):
                 pass
 
-        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        self.server = _NoLookupServer(("127.0.0.1", 0), Handler)
         self.port = self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
 
