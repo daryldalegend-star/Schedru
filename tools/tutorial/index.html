@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Schedru tutorial (source)</title>
+<!-- The tutorial video is this page, photographed frame by frame by
+     tools/make_tutorial.mjs. It uses the app's real stylesheet, so the
+     Schedru window in the video is the real interface, not a drawing of it. -->
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/_tutorial/tutorial.css">
+</head>
+<body class="tut">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="mark" viewBox="0 0 64 64">
+      <rect x="7" y="11" width="50" height="46" rx="11" fill="#fffdf8" stroke="#cfc5b1" stroke-width="1.5"/>
+      <path d="M7 22a11 11 0 0 1 11-11h28a11 11 0 0 1 11 11v5H7z" fill="#d5402b"/>
+      <rect x="19.5" y="5" width="5.5" height="13" rx="2.75" fill="#1d1b18" stroke="#fffdf8" stroke-width="1.2"/>
+      <rect x="39" y="5" width="5.5" height="13" rx="2.75" fill="#1d1b18" stroke="#fffdf8" stroke-width="1.2"/>
+      <path d="M21 39v-4.5h4.5M43 39v-4.5h-4.5M21 45.5V50h4.5M43 45.5V50h-4.5" fill="none" stroke="#1d1b18" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="32" cy="42.2" r="3.1" fill="#d5402b"/>
+    </symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M7 3v3M17 3v3M4 9.5h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21zM9.8 10.5a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0-4.4 0"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 6.5h14M5 12h14M5 17.5h9"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-capture" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M9.5 12a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m0 0-4 4m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M11 7H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></symbol>
+  </defs>
+</svg>
+
+<div id="stage">
+
+  <!-- ======== 0. title ======== -->
+  <section class="scene" id="s-title">
+    <svg class="title-mark"><use href="#mark"/></svg>
+    <h1 class="display title-line">How Schedru works</h1>
+    <p class="title-sub">From a screenshot to your calendar, in three steps</p>
+  </section>
+
+  <!-- ======== 1. the desktop ======== -->
+  <section class="scene" id="s-desktop">
+    <div class="menubar">
+      <span class="dot"></span><b>Browser</b><span>File</span><span>Edit</span><span>View</span><span>History</span>
+      <i></i><span>Mon 9:41 AM</span>
+    </div>
+
+    <div class="browser">
+      <div class="browser-bar">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <span class="address">campus feed &nbsp;·&nbsp; Scarlet Robotics Club</span>
+      </div>
+      <div class="feed">
+        <article class="post">
+          <header>
+            <span class="avatar">SR</span>
+            <div><b>scarletrobotics</b><small>Rutgers–New Brunswick</small></div>
+          </header>
+          <div class="flyer" id="flyer">
+            <div class="flyer-gear g1"></div><div class="flyer-gear g2"></div>
+            <p class="flyer-org">Scarlet Robotics Club</p>
+            <h2>Kickoff<br>Meeting</h2>
+            <p class="flyer-when">THU · NOV 19 · 7:30</p>
+            <p class="flyer-where">BSC 120 C</p>
+            <p class="flyer-perk">Free pizza · All majors welcome</p>
+            <div class="flyer-foot"><span class="qr"></span><span>Scan to RSVP</span></div>
+          </div>
+          <footer><span class="heart"></span><span class="bubble"></span><span class="share"></span><em>312 likes</em></footer>
+        </article>
+        <aside class="side">
+          <p class="side-title">More from campus</p>
+          <div class="skel"><i></i><b></b><b class="short"></b></div>
+          <div class="skel"><i></i><b></b><b class="short"></b></div>
+          <div class="skel"><i></i><b></b><b class="short"></b></div>
+          <div class="skel"><i></i><b></b><b class="short"></b></div>
+        </aside>
+      </div>
+    </div>
+
+    <div class="shade" id="shade"></div>
+    <div class="selection" id="selection"><span id="selection-size"></span></div>
+    <div class="flash" id="flash"></div>
+
+    <div class="bigkeys" id="bigkeys">
+      <span class="bigkey" id="key-cmd">⌘</span>
+      <span class="bigkey" id="key-shift">⇧</span>
+      <span class="bigkey" id="key-2">2</span>
+    </div>
+    <svg class="crosshair" id="crosshair" viewBox="0 0 32 32"><path d="M16 2v11M16 19v11M2 16h11M19 16h11" /><circle cx="16" cy="16" r="1.4"/></svg>
+  </section>
+
+  <!-- ======== 2. Schedru ======== -->
+  <section class="scene" id="s-app">
+    <div class="dim" id="dim"></div>
+    <div class="appwin" id="appwin">
+      <div class="appwin-bar"><span class="lights"><i></i><i></i><i></i></span><b>Schedru</b></div>
+      <div class="appwin-body">
+        <header class="topbar">
+          <div class="brand"><svg class="mark"><use href="#mark"/></svg>Schedru</div>
+          <div class="topbar-space"></div>
+          <div class="account"><span>you@gmail.com</span></div>
+        </header>
+
+        <div class="pane" id="pane-reading">
+          <div class="scan"><div class="flyer mini"><p class="flyer-org">Scarlet Robotics Club</p><h2>Kickoff<br>Meeting</h2><p class="flyer-when">THU · NOV 19 · 7:30</p><p class="flyer-where">BSC 120 C</p><p class="flyer-perk">Free pizza · All majors welcome</p></div></div>
+          <div>
+            <h1 class="display title" style="font-size:28px">One moment</h1>
+            <p class="reading-status"><span id="read-1">Reading your screenshot…</span><span id="read-2">Finding the date, time and place…</span></p>
+          </div>
+        </div>
+
+        <div class="pane" id="pane-review">
+          <div class="review-grid">
+            <aside class="review-side">
+              <div class="thumb"><div class="flyer mini"><p class="flyer-org">Scarlet Robotics Club</p><h2>Kickoff<br>Meeting</h2><p class="flyer-when">THU · NOV 19 · 7:30</p><p class="flyer-where">BSC 120 C</p><p class="flyer-perk">Free pizza · All majors welcome</p></div></div>
+              <p class="hint">Your screenshot</p>
+            </aside>
+            <div class="review-main">
+              <div class="review-head">
+                <h1 class="display title">Found 1 event</h1>
+                <p class="muted">Look it over. Nothing goes on your calendar until you press Add.</p>
+              </div>
+              <article class="event" id="card">
+                <label style="position:relative; display:block; height:26px"><span class="check-box on"><svg class="icon"><use href="#i-check"/></svg></span></label>
+                <div style="min-width:0">
+                  <div class="event-top">
+                    <h3 class="event-title" id="f-title">Scarlet Robotics Club: Kickoff Meeting</h3>
+                    <span class="btn btn-quiet" style="height:30px; padding:0 10px"><svg class="icon icon-sm"><use href="#i-edit"/></svg>Edit</span>
+                  </div>
+                  <ul class="facts">
+                    <li id="f-when"><svg class="icon"><use href="#i-calendar"/></svg><span>Thu, Nov 19 · 7:30 – 8:30 PM</span></li>
+                    <li id="f-where"><svg class="icon"><use href="#i-pin"/></svg><span>Busch Student Center, Room 120C, Busch Campus, Rutgers University, Piscataway, NJ</span></li>
+                    <li class="notes" id="f-notes"><svg class="icon"><use href="#i-note"/></svg><span>Hosted by Scarlet Robotics Club. Free pizza. Open to all majors. Scan the QR code on the flyer to RSVP.</span></li>
+                  </ul>
+                  <div class="chips">
+                    <span class="chip guess" id="c-1"><b>~</b>7:30 read as PM (evening club meeting)</span>
+                    <span class="chip guess" id="c-2"><b>~</b>No end time given, so assumed 1 hour</span>
+                    <span class="chip guess" id="c-3"><b>~</b>BSC = Busch Student Center</span>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+          <div class="actionbar">
+            <span class="btn btn-primary btn-lg" id="add-btn">Add 1 event to Google Calendar</span>
+            <span class="promise">Goes to you@gmail.com</span>
+          </div>
+        </div>
+
+        <div class="pane" id="pane-done">
+          <div class="done-head">
+            <div class="tick" id="tick"><svg viewBox="0 0 24 24"><path id="tick-path" d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+            <div><h1 class="display title" style="margin:0">It's on your calendar</h1><p class="muted">you@gmail.com</p></div>
+          </div>
+          <div class="card" id="done-card">
+            <ul class="results">
+              <li><svg class="icon ok-mark"><use href="#i-check"/></svg>
+                <div class="what"><strong>Scarlet Robotics Club: Kickoff Meeting</strong><span>Thu, Nov 19 · 7:30 – 8:30 PM</span></div>
+                <span class="btn btn-quiet">Open<svg class="icon icon-sm"><use href="#i-external"/></svg></span></li>
+            </ul>
+          </div>
+          <div class="row" id="done-actions"><span class="btn btn-primary btn-lg">Capture another</span><span class="btn btn-lg">Open Google Calendar<svg class="icon icon-sm"><use href="#i-external"/></svg></span></div>
+        </div>
+      </div>
+    </div>
+    <svg class="pointer" id="pointer" viewBox="0 0 28 28"><path d="M6 3l15.5 11.2-6.9 1.2 4 7.6-3 1.6-4-7.7L6 21.5z"/></svg>
+  </section>
+
+  <!-- ======== 3. the calendar ======== -->
+  <section class="scene" id="s-cal">
+    <div class="cal">
+      <header class="cal-head">
+        <svg class="cal-logo" viewBox="0 0 24 24"><use href="#i-calendar"/></svg>
+        <b>Google Calendar</b>
+        <span class="cal-month">November 2026</span>
+        <i></i>
+        <span class="cal-pill">Week</span>
+        <span class="cal-avatar">Y</span>
+      </header>
+      <div class="cal-days">
+        <span></span>
+        <div><small>SUN</small><b>15</b></div><div><small>MON</small><b>16</b></div><div><small>TUE</small><b>17</b></div>
+        <div><small>WED</small><b>18</b></div><div class="today"><small>THU</small><b>19</b></div><div><small>FRI</small><b>20</b></div><div><small>SAT</small><b>21</b></div>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-times"><span>4 PM</span><span>5 PM</span><span>6 PM</span><span>7 PM</span><span>8 PM</span><span>9 PM</span></div>
+        <div class="cal-cols">
+          <div></div><div><div class="ev ev-a" style="top:16.66%; height:25%">Chem lecture<small>5 – 6:30 PM</small></div></div>
+          <div><div class="ev ev-b" style="top:0; height:33.3%">Bio lab<small>4 – 6 PM</small></div></div>
+          <div><div class="ev ev-c" style="top:33.3%; height:16.66%">Study group<small>6 – 7 PM</small></div></div>
+          <div class="col-thu">
+            <div class="ev ev-new" id="new-ev">Scarlet Robotics Club: Kickoff Meeting<small>7:30 – 8:30 PM</small></div>
+            <div class="ring" id="ring"></div>
+          </div>
+          <div><div class="ev ev-a" style="top:16.66%; height:25%">Chem lecture<small>5 – 6:30 PM</small></div></div>
+          <div></div>
+        </div>
+      </div>
+      <div class="popover" id="popover">
+        <span class="swatch"></span>
+        <h3>Scarlet Robotics Club: Kickoff Meeting</h3>
+        <p class="pop-when">Thursday, November 19 · 7:30 – 8:30 PM</p>
+        <p class="pop-row"><svg class="icon"><use href="#i-pin"/></svg>Busch Student Center, Room 120C, Busch Campus, Rutgers University, Piscataway, NJ</p>
+        <p class="pop-row"><svg class="icon"><use href="#i-note"/></svg>Hosted by Scarlet Robotics Club. Free pizza. Open to all majors. Scan the QR code on the flyer to RSVP.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======== 4. the end ======== -->
+  <section class="scene" id="s-end">
+    <h1 class="display end-title">Three ways to capture</h1>
+    <div class="ways">
+      <div class="way" id="way-1"><div class="way-art"><span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">2</span></div><b>The shortcut</b><span>From any app, while Schedru is open</span></div>
+      <div class="way" id="way-2"><div class="way-art"><span class="btn btn-primary"><svg class="icon"><use href="#i-capture"/></svg>Capture from screen</span></div><b>The Capture button</b><span>In the Schedru window</span></div>
+      <div class="way" id="way-3"><div class="way-art"><svg class="icon icon-xl"><use href="#i-upload"/></svg><span class="kbd">⌘</span><span class="kbd">V</span></div><b>Drop or paste</b><span>A screenshot or photo you already have</span></div>
+    </div>
+    <p class="end-promise" id="end-promise">You're always asked before anything is added.</p>
+    <div class="end-brand" id="end-brand"><svg class="mark"><use href="#mark"/></svg><b class="display">Schedru</b><span>Your Schedule Optimizer</span></div>
+  </section>
+
+  <!-- captions, over everything -->
+  <div class="captions">
+    <p class="caption" id="cap-1"><b>1</b>See something with a date on it? Press <span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">2</span></p>
+    <p class="caption" id="cap-2"><b>1</b>Drag over it, just like a normal Mac screenshot</p>
+    <p class="caption" id="cap-3"><b>2</b>Schedru reads it for you</p>
+    <p class="caption" id="cap-4"><b>2</b>It fills in the time, the place and the details</p>
+    <p class="caption" id="cap-5"><b>2</b>Anything it had to assume is marked with <span class="tilde">~</span> so you can check it</p>
+    <p class="caption" id="cap-6"><b>3</b>Looks right? Press Add</p>
+    <p class="caption" id="cap-7"><b>3</b>Done. Nothing is added until you say so</p>
+    <p class="caption" id="cap-8"><b>✓</b>It's on your Google Calendar, with the place and notes filled in</p>
+  </div>
+</div>
+<script src="/_tutorial/tutorial.js"></script>
+</body>
+</html>
