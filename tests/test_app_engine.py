@@ -246,3 +246,14 @@ def test_make_engine_picks_demo_only_when_asked(tmp_path, monkeypatch):
     assert isinstance(make_engine(tmp_path, " Demo "), DemoEngine)
     assert isinstance(make_engine(tmp_path, None), RealEngine)
     assert isinstance(make_engine(tmp_path, ""), RealEngine)
+
+
+def test_the_demo_date_can_be_pinned_for_reproducible_screenshots(tmp_path, monkeypatch):
+    monkeypatch.setenv("SCHEDRU_DEMO_TODAY", "2026-11-13")
+    engine = make_engine(tmp_path, "demo")
+    engine.delay = 0
+    events = engine.read(tmp_path / "any.png", "key").events
+    assert events[0].start_date == date(2026, 11, 19)  # the Thursday on the sample flyer
+
+    monkeypatch.delenv("SCHEDRU_DEMO_TODAY")
+    assert make_engine(tmp_path, "demo").today is None

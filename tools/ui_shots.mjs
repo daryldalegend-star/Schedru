@@ -52,6 +52,9 @@ async function startApp(work) {
       ...process.env,
       SCHEDRU_DATA_DIR: data,
       SCHEDRU_ENGINE: "demo",
+      // The Friday before the sample flyer's date, so the stand-in event lands
+      // on the Thursday the flyer names and the pictures agree with each other.
+      SCHEDRU_DEMO_TODAY: "2026-11-13",
       SCHEDRU_DEBUG_HOOKS: "1",
       SCHEDRU_TEST_HOOK: hook,
     },

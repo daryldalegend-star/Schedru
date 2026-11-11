@@ -235,10 +235,17 @@ class DemoEngine:
     name = "demo"
     CALENDAR_NAME = "you@example.com"
 
-    def __init__(self, data_dir: Path, delay: float = 1.2, scenario: str = "default") -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        delay: float = 1.2,
+        scenario: str = "default",
+        today: date | None = None,
+    ) -> None:
         self.data_dir = Path(data_dir)
         self.delay = delay
         self.scenario = scenario
+        self.today = today  # None: the real date. Fixed for reproducible screenshots.
         self.added: list[ExtractedEvent] = []
         self.reads: list[Path] = []
 
@@ -267,7 +274,7 @@ class DemoEngine:
             raise ClaudeAPIError("Anthropic rejected your API key.", kind="auth")
         if self.scenario == "empty":
             return ExtractionResult(events=[])
-        return ExtractionResult(events=demo_events())
+        return ExtractionResult(events=demo_events(self.today))
 
     def has_credentials(self) -> bool:
         return self._credentials_path.exists()
@@ -321,9 +328,15 @@ class DemoEngine:
         return outcomes
 
 
+DEMO_TODAY_ENV = "SCHEDRU_DEMO_TODAY"  # YYYY-MM-DD: what "today" is to the demo engine
+
+
 def make_engine(data_dir: Path, kind: str | None = None) -> Any:
     if (kind or "").strip().lower() == "demo":
-        return DemoEngine(data_dir)
+        import os
+
+        pinned = os.environ.get(DEMO_TODAY_ENV, "").strip()
+        return DemoEngine(data_dir, today=date.fromisoformat(pinned) if pinned else None)
     return RealEngine(data_dir)
 
 
