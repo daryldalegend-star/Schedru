@@ -89,7 +89,7 @@ def test_assumptions_are_recorded_on_the_event_description():
     )
     body = build_event_body(event)
 
-    assert "Filled in by syllabus_cal" in body["description"]
+    assert "Filled in by Schedru" in body["description"]
     assert "- 7:30 read as PM (evening club meeting)" in body["description"]
 
 
@@ -137,7 +137,7 @@ def test_notes_come_before_the_assumptions_list():
     )
     description = build_event_body(event)["description"]
 
-    assert description.index("Free pizza") < description.index("Filled in by syllabus_cal")
+    assert description.index("Free pizza") < description.index("Filled in by Schedru")
 
 
 def test_no_notes_and_no_assumptions_means_no_description():

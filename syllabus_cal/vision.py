@@ -55,7 +55,17 @@ class ExtractionError(RuntimeError):
 
 
 class ClaudeAPIError(RuntimeError):
-    """Anthropic's API refused or failed the request, explained in plain language."""
+    """Anthropic's API refused or failed the request, explained in plain language.
+
+    `kind` says which sort of failure it was ("auth", "permission", "model",
+    "rate_limit", "bad_request", "server", "timeout", "connection"), so the app
+    can offer the right next step -- a bad key gets a "change key" button --
+    without matching on the wording.
+    """
+
+    def __init__(self, message: str, kind: str = "other") -> None:
+        super().__init__(message)
+        self.kind = kind
 
 
 def _encode_jpeg(image: Image.Image) -> bytes:
@@ -155,30 +165,45 @@ def _call_claude(client: Anthropic, image_b64: str, media_type: str, prompt: str
             "Anthropic rejected your API key. It may be mistyped, deleted, or expired "
             "(keys can be created with an expiry date). Make a new one at "
             "console.anthropic.com -> API keys, copy it from the dialog that appears, "
-            "and paste it into .env."
+            "and paste it into .env.",
+            kind="auth",
         ) from exc
     except anthropic.PermissionDeniedError as exc:
-        raise ClaudeAPIError(f"Your API key isn't allowed to do this: {_api_error_message(exc)}") from exc
+        raise ClaudeAPIError(
+            f"Your API key isn't allowed to do this: {_api_error_message(exc)}", kind="permission"
+        ) from exc
     except anthropic.NotFoundError as exc:
         raise ClaudeAPIError(
             f"The model '{MODEL}' isn't available to your account any more. "
-            f"Anthropic said: {_api_error_message(exc)}"
+            f"Anthropic said: {_api_error_message(exc)}",
+            kind="model",
         ) from exc
     except anthropic.RateLimitError as exc:
         raise ClaudeAPIError(
-            "Anthropic is limiting how fast you can send requests. Wait a minute and try again."
+            "Anthropic is limiting how fast you can send requests. Wait a minute and try again.",
+            kind="rate_limit",
         ) from exc
     except anthropic.BadRequestError as exc:
         # Also how an empty account balance arrives, with the API's own
         # explanation of where to add credit.
-        raise ClaudeAPIError(f"Anthropic refused the request: {_api_error_message(exc)}") from exc
+        raise ClaudeAPIError(
+            f"Anthropic refused the request: {_api_error_message(exc)}", kind="bad_request"
+        ) from exc
     except anthropic.APIStatusError as exc:
         raise ClaudeAPIError(
             f"Anthropic had a problem on their end (HTTP {exc.status_code}). "
-            "Try again in a few minutes."
+            "Try again in a few minutes.",
+            kind="server",
+        ) from exc
+    except anthropic.APITimeoutError as exc:
+        # A subclass of APIConnectionError, so it has to be caught first.
+        raise ClaudeAPIError(
+            "Anthropic took too long to answer. Try again in a moment.", kind="timeout"
         ) from exc
     except anthropic.APIConnectionError as exc:
-        raise ClaudeAPIError("Couldn't reach Anthropic -- check your internet connection.") from exc
+        raise ClaudeAPIError(
+            "Couldn't reach Anthropic -- check your internet connection.", kind="connection"
+        ) from exc
 
     # Checked before reading the text: a truncated reply fails JSON parsing,
     # and the parse-error retry would just be truncated again, at full price.

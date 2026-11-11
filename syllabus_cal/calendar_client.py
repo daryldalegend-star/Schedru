@@ -1,8 +1,9 @@
 """Google Calendar OAuth (desktop app flow) and event writing.
 
 `credentials.json` (downloaded from Google Cloud Console, see SETUP.md) and
-`token.json` (written here on first successful sign-in) both live in the
-project root and are gitignored -- never commit either.
+`token.json` (written here on first successful sign-in) both live in the data
+folder -- the project folder when run from source, see paths.py -- and are
+gitignored. Never commit either.
 """
 
 from __future__ import annotations
@@ -21,14 +22,25 @@ from googleapiclient.errors import HttpError
 from httplib2 import HttpLib2Error
 from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 
+from .paths import data_dir
 from .rrule import DEFAULT_TZ, TIMEZONE, build_recurrence
 from .schema import ExtractedEvent
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Module attributes rather than function calls so that the app (and the tests)
+# can point them somewhere else.
+_PROJECT_ROOT = data_dir(create=False)
 CREDENTIALS_PATH = _PROJECT_ROOT / "credentials.json"
 TOKEN_PATH = _PROJECT_ROOT / "token.json"
+
+# What the user must tick on Google's consent screen. Said in one place
+# because both sign-in paths (terminal and app) have to explain it.
+MISSING_CALENDAR_PERMISSION = (
+    "Google signed you in, but without permission to add events. Sign in again and, "
+    "when Google lists what Schedru can do, tick the box for Google Calendar before "
+    "pressing Continue."
+)
 
 # Written into every event this tool creates so they can be found and
 # bulk-deleted later (e.g. test data) without touching anything else on the
@@ -62,14 +74,31 @@ def run_auth_flow() -> Credentials:
         # grant, so signing in again could yield a token that dies an hour later.
         creds = flow.run_local_server(port=0, prompt="select_account consent")
     except OAuth2Error as exc:
-        raise GoogleConnectionError(
-            f"Google didn't grant access ({exc.description or exc.error}). If the browser "
-            "said \"Access blocked\", the account you picked isn't on this app's test-user "
-            "list: add it under Google Auth Platform -> Audience -> Test users (SETUP.md "
-            "step 3), or pick the account that's already there."
-        ) from exc
-    TOKEN_PATH.write_text(creds.to_json())
+        raise GoogleConnectionError(access_not_granted_message(exc)) from exc
+    except Warning as exc:
+        # oauthlib reports "the scopes you got aren't the ones you asked for"
+        # by raising a Warning. It means the Calendar box was left unticked.
+        raise GoogleConnectionError(MISSING_CALENDAR_PERMISSION) from exc
+    save_token(creds)
     return creds
+
+
+def access_not_granted_message(exc: OAuth2Error) -> str:
+    return (
+        f"Google didn't grant access ({exc.description or exc.error}). If the browser "
+        "said \"Access blocked\", the account you picked isn't on this app's test-user "
+        "list: add it under Google Auth Platform -> Audience -> Test users (SETUP.md "
+        "step 3), or pick the account that's already there."
+    )
+
+
+def save_token(creds: Credentials) -> None:
+    """Persist the sign-in, readable only by this user: it grants calendar access."""
+    TOKEN_PATH.write_text(creds.to_json())
+    try:
+        TOKEN_PATH.chmod(0o600)
+    except OSError:
+        pass  # Windows, or a filesystem without permissions
 
 
 def load_credentials() -> Credentials:
@@ -102,7 +131,7 @@ def load_credentials() -> Credentials:
             "Couldn't reach Google to renew your sign-in -- check your internet connection."
         ) from exc
 
-    TOKEN_PATH.write_text(creds.to_json())
+    save_token(creds)
     return creds
 
 
@@ -155,7 +184,7 @@ def _description(event: ExtractedEvent) -> str | None:
             lines.append("")
         # Kept on the event itself so a wrong guess is catchable later, in
         # Calendar, rather than only at the confirmation prompt.
-        lines.append("Filled in by syllabus_cal (check these):")
+        lines.append("Filled in by Schedru (check these):")
         lines.extend(f"- {assumed}" for assumed in event.assumptions)
     return "\n".join(lines) or None
 
