@@ -4,7 +4,7 @@
 
 cd "$(dirname "$0")" || exit 1
 
-echo "=== syllabus_cal ==="
+echo "=== Schedru ==="
 echo
 
 # `command -v python3` isn't enough on macOS: /usr/bin/python3 exists as a

@@ -83,7 +83,12 @@ def test_venv_creation_failure_reports_the_interpreter(bootstrap, monkeypatch, c
     assert "Could not create the virtual environment" in capsys.readouterr().out
 
 
-def test_dependency_install_failure_blames_the_network_not_python(bootstrap, monkeypatch, capsys):
+def test_dependency_install_failure_blames_the_network_not_python(
+    bootstrap, tmp_path, monkeypatch, capsys
+):
+    (tmp_path / "requirements.txt").write_text("anthropic\n")
+    (tmp_path / ".venv").mkdir()
+
     class Result:
         returncode = 1
 
@@ -93,15 +98,139 @@ def test_dependency_install_failure_blames_the_network_not_python(bootstrap, mon
     assert "Could not download the dependencies" in capsys.readouterr().out
 
 
+class Succeeded:
+    returncode = 0
+
+
+def recording_run(calls):
+    def run(command, *args, **kwargs):
+        calls.append([str(part) for part in command])
+        return Succeeded()
+
+    return run
+
+
 def test_dependencies_are_not_reinstalled_once_stamped(bootstrap, tmp_path, monkeypatch):
+    (tmp_path / "requirements.txt").write_text("anthropic\n")
     (tmp_path / ".venv").mkdir()
-    (tmp_path / ".venv" / ".deps-installed").write_text("ok\n")
+    (tmp_path / ".venv" / ".deps-installed").write_text(bootstrap.requirements_fingerprint() + "\n")
 
     calls = []
-    monkeypatch.setattr(bootstrap.subprocess, "run", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(bootstrap.subprocess, "run", recording_run(calls))
 
     assert bootstrap.ensure_dependencies() == 0
     assert calls == []
+
+
+def test_a_first_install_records_which_requirements_it_installed(bootstrap, tmp_path, monkeypatch):
+    (tmp_path / "requirements.txt").write_text("anthropic\n")
+    (tmp_path / ".venv").mkdir()
+    calls = []
+    monkeypatch.setattr(bootstrap.subprocess, "run", recording_run(calls))
+
+    assert bootstrap.ensure_dependencies() == 0
+    assert any("requirements.txt" in " ".join(call) for call in calls)
+    stamp = (tmp_path / ".venv" / ".deps-installed").read_text().strip()
+    assert stamp == bootstrap.requirements_fingerprint()
+
+
+def test_a_folder_set_up_by_an_older_version_gets_the_new_dependencies(
+    bootstrap, tmp_path, monkeypatch, capsys
+):
+    """Older versions stamped "ok" whatever they installed. The app needs
+    packages they never had, so that stamp must not count."""
+    (tmp_path / "requirements.txt").write_text("anthropic\npywebview\n")
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / ".deps-installed").write_text("ok\n")
+    calls = []
+    monkeypatch.setattr(bootstrap.subprocess, "run", recording_run(calls))
+
+    assert bootstrap.ensure_dependencies() == 0
+    assert any("requirements.txt" in " ".join(call) for call in calls)
+    assert "Updating" in capsys.readouterr().out
+    assert (tmp_path / ".venv" / ".deps-installed").read_text().strip() == (
+        bootstrap.requirements_fingerprint()
+    )
+
+
+def test_changed_requirements_are_installed_again(bootstrap, tmp_path, monkeypatch):
+    (tmp_path / "requirements.txt").write_text("anthropic\n")
+    (tmp_path / ".venv").mkdir()
+    calls = []
+    monkeypatch.setattr(bootstrap.subprocess, "run", recording_run(calls))
+    bootstrap.ensure_dependencies()
+
+    calls.clear()
+    assert bootstrap.ensure_dependencies() == 0
+    assert calls == []
+
+    (tmp_path / "requirements.txt").write_text("anthropic\nsomething-new\n")
+    assert bootstrap.ensure_dependencies() == 0
+    assert calls != []
+
+
+def test_a_failed_update_is_retried_next_time(bootstrap, tmp_path, monkeypatch):
+    (tmp_path / "requirements.txt").write_text("anthropic\n")
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / ".deps-installed").write_text("ok\n")
+
+    class Failed:
+        returncode = 1
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", lambda *a, **k: Failed())
+    assert bootstrap.ensure_dependencies() == 1
+    assert (tmp_path / ".venv" / ".deps-installed").read_text() == "ok\n"  # still stale
+
+
+def ready_folder(bootstrap, tmp_path, monkeypatch):
+    """A folder where setup has nothing left to do, and a record of what runs."""
+    (tmp_path / "requirements.txt").write_text("anthropic\n")
+    python = bootstrap.venv_python()
+    python.parent.mkdir(parents=True)
+    python.write_text("")
+    (tmp_path / ".venv" / ".deps-installed").write_text(bootstrap.requirements_fingerprint())
+    calls = []
+    monkeypatch.setattr(bootstrap.subprocess, "run", recording_run(calls))
+    return calls
+
+
+def test_double_clicking_opens_the_app_without_needing_a_key_file(bootstrap, tmp_path, monkeypatch):
+    calls = ready_folder(bootstrap, tmp_path, monkeypatch)
+
+    assert bootstrap.main([]) == 0
+    assert calls == [[str(bootstrap.venv_python()), "-m", "syllabus_cal.app"]]
+    assert not (tmp_path / ".env").exists()  # the app asks for the key itself
+
+
+@pytest.mark.parametrize("argv", [["parse", "flyer.png"], ["auth"], ["auth", "--test-event"]])
+def test_the_old_commands_still_run_the_terminal_version(bootstrap, tmp_path, monkeypatch, argv):
+    calls = ready_folder(bootstrap, tmp_path, monkeypatch)
+    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-example\n")
+
+    assert bootstrap.main(argv) == 0
+    assert calls == [[str(bootstrap.venv_python()), "-m", "syllabus_cal", *argv]]
+
+
+def test_terminal_flag_runs_the_terminal_version(bootstrap, tmp_path, monkeypatch):
+    calls = ready_folder(bootstrap, tmp_path, monkeypatch)
+    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-example\n")
+
+    assert bootstrap.main(["--terminal"]) == 0
+    assert calls == [[str(bootstrap.venv_python()), "-m", "syllabus_cal"]]
+
+
+def test_the_terminal_version_still_insists_on_a_key_first(bootstrap, tmp_path, monkeypatch):
+    calls = ready_folder(bootstrap, tmp_path, monkeypatch)
+
+    assert bootstrap.main(["parse", "flyer.png"]) == 1
+    assert calls == []
+
+
+def test_other_arguments_are_passed_to_the_app(bootstrap, tmp_path, monkeypatch):
+    calls = ready_folder(bootstrap, tmp_path, monkeypatch)
+
+    assert bootstrap.main(["--browser"]) == 0
+    assert calls == [[str(bootstrap.venv_python()), "-m", "syllabus_cal.app", "--browser"]]
 
 
 def test_python_39_from_xcode_is_rejected_with_a_clear_message(bootstrap, monkeypatch, capsys):

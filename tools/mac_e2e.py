@@ -461,6 +461,20 @@ def through_finder(app_path: Path, work: Path) -> None:
         app.refresh_page()
         check("it reaches the capture screen", wait_for(lambda: app.route() == "home", 10), app.route())
 
+        step("Closing, then clicking the Dock icon")
+        app.call("/api/debug/show", {})
+        wait_for(lambda: app.window().get("active") and app.window().get("key"), 6)
+        app.call("/api/debug/focus", {})
+        time.sleep(0.3)
+        post_key(KEY_W, command=True)
+        check("Cmd-W hides the window", wait_for(lambda: app.window().get("visible") is False, 6), app.window())
+        subprocess.run(["open", str(app_path)], check=False, timeout=30)  # what the Dock icon does
+        check("opening it again shows the same window", wait_for(lambda: app.window().get("visible"), 10), app.window())
+        running = subprocess.run(["pgrep", "-f", "Schedru.app/Contents/MacOS/Schedru"], capture_output=True, text=True)
+        pids = [pid for pid in running.stdout.split() if pid]
+        check("still one copy running", len(pids) == 1, pids)
+
+        step("Screen recording permission, as the app itself")
         # Opened this way the app answers for itself to macOS's privacy system,
         # as it will on a real person's Mac, instead of inheriting this
         # script's permissions.
@@ -478,19 +492,6 @@ def through_finder(app_path: Path, work: Path) -> None:
             app.refresh_page()
             check("...and explains what to do", wait_for(lambda: app.js("!!document.getElementById('permission-sheet')"), 6))
             app.click("#permission-later")
-
-        step("Closing, then clicking the Dock icon")
-        app.call("/api/debug/show", {})
-        wait_for(lambda: app.window().get("active") and app.window().get("key"), 6)
-        app.call("/api/debug/focus", {})
-        time.sleep(0.3)
-        post_key(KEY_W, command=True)
-        check("Cmd-W hides the window", wait_for(lambda: app.window().get("visible") is False, 6), app.window())
-        subprocess.run(["open", str(app_path)], check=False, timeout=30)  # what the Dock icon does
-        check("opening it again shows the same window", wait_for(lambda: app.window().get("visible"), 10), app.window())
-        running = subprocess.run(["pgrep", "-f", "Schedru.app/Contents/MacOS/Schedru"], capture_output=True, text=True)
-        pids = [pid for pid in running.stdout.split() if pid]
-        check("still one copy running", len(pids) == 1, pids)
 
         subprocess.run(["osascript", "-e", f'tell application "{app_path}" to quit'], check=False, timeout=30)
         check("Quit from the menu bar quits it", bool(wait_for(lambda: not app.alive(), 12)))
@@ -512,7 +513,6 @@ def main() -> int:
     work = Path(tempfile.mkdtemp(prefix="schedru-e2e-"))
     packaged = args.app is not None
     app = Schedru(work / "main")
-    (work / "main").mkdir()
     try:
         if packaged:
             binary = args.app.resolve() / "Contents" / "MacOS" / "Schedru"
@@ -532,7 +532,6 @@ def main() -> int:
             print("\n--- schedru.log ---\n" + crash.read_text(errors="replace")[-4000:])
 
     if packaged:
-        (work / "finder").mkdir()
         through_finder(args.app.resolve(), work / "finder")
         crash = work / "finder" / "data" / "schedru.log"
         if crash.exists() and crash.stat().st_size:

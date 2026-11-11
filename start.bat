@@ -5,7 +5,7 @@ REM Finds a working Python, then hands off to bootstrap.py.
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-echo === syllabus_cal ===
+echo === Schedru ===
 echo.
 
 REM `where python` is NOT good enough here. Windows ships stub python.exe and

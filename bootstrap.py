@@ -1,5 +1,5 @@
-"""First-run setup: create the virtualenv, install dependencies, check .env,
-then hand off to syllabus_cal.
+"""First-run setup: create the virtualenv, install dependencies, then open
+Schedru (or, when asked, the original terminal version).
 
 This lives in Python rather than in start.bat/start.command because the
 Windows batch file cannot be run on the machine this was developed on. Keeping
@@ -12,6 +12,7 @@ Runs on the system Python, so it must not import anything third-party.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 import sys
@@ -79,9 +80,26 @@ def ensure_venv() -> int:
     return 0
 
 
+def requirements_fingerprint() -> str:
+    try:
+        return hashlib.sha256((ROOT / "requirements.txt").read_bytes()).hexdigest()
+    except OSError:
+        return "no requirements.txt"
+
+
 def ensure_dependencies() -> int:
-    if STAMP.exists():
+    # The stamp records *which* requirements were installed, not just that an
+    # install happened: an update that adds a dependency has to install it,
+    # and a folder set up by an older version has a stamp that predates it.
+    wanted = requirements_fingerprint()
+    try:
+        installed = STAMP.read_text().strip()
+    except OSError:
+        installed = None
+    if installed == wanted:
         return 0
+    if installed is not None:
+        print("Updating - installing what's new. This takes a minute.")
 
     python = str(venv_python())
     subprocess.run([python, "-m", "pip", "install", "--quiet", "--upgrade", "pip"])
@@ -96,7 +114,7 @@ def ensure_dependencies() -> int:
             "blocking pip. Check your connection and try again.",
         )
 
-    STAMP.write_text("ok\n")
+    STAMP.write_text(wanted + "\n")
     print("Setup done.")
     print()
     return 0
@@ -142,13 +160,33 @@ def ensure_env_file() -> int:
     return 0
 
 
+# Asking for one of these means the terminal version, as before the app existed.
+TERMINAL_COMMANDS = ("parse", "auth")
+TERMINAL_FLAG = "--terminal"
+
+
 def main(argv: list[str]) -> int:
-    for step in (ensure_python_version, ensure_venv, ensure_dependencies, ensure_env_file):
+    for step in (ensure_python_version, ensure_venv, ensure_dependencies):
         code = step()
         if code:
             return code
 
-    result = subprocess.run([str(venv_python()), "-m", "syllabus_cal", *argv], cwd=ROOT)
+    if argv and (argv[0] == TERMINAL_FLAG or argv[0] in TERMINAL_COMMANDS):
+        if argv[0] == TERMINAL_FLAG:
+            argv = argv[1:]
+        # Only the terminal version needs the key in place first: the app asks
+        # for it in its own window.
+        code = ensure_env_file()
+        if code:
+            return code
+        module = "syllabus_cal"
+    else:
+        module = "syllabus_cal.app"
+        print("Opening Schedru. Keep this window open while you use it;")
+        print("closing it closes Schedru too.")
+        print()
+
+    result = subprocess.run([str(venv_python()), "-m", module, *argv], cwd=ROOT)
     return result.returncode
 
 
