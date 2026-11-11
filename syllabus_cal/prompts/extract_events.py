@@ -78,6 +78,11 @@ conflicting information, a recurring event whose end is never stated — then lo
 below 0.8 and put it in "ambiguity_flags" instead, leaving the field null. A confident wrong \
 date is far worse than a flagged one.
 
+   The one field that can never be null is "start_date": an event has to go on some day. If \
+the image gives a weekday but no date ("Thursdays at 7"), use the next such day on or after \
+today and say so in "assumptions". If you can read most of a date but not all of it, give your \
+best reading and flag it. If there is nothing at all to place it on a day, leave the event out.
+
    The difference in one line: "assumptions" means *I filled this in and I'm probably right*; \
 "ambiguity_flags" means *I genuinely don't know, please look at this one*. Events with only \
 assumptions are added by default; flagged events are skipped by default.

@@ -1,188 +1,195 @@
-# syllabus_cal
+# Schedru
 
-Screenshot → Google Calendar pipeline. Point it at an image of a syllabus,
-club flyer, Instagram post, or schedule email; it extracts every dated
-commitment, fills in what you'd need to know, shows you what it found, and
-writes the events you confirm to your Google Calendar.
+**Your Schedule Optimizer.** Screenshot anything with a date on it — a club
+flyer, a syllabus, an email, a group chat — and Schedru reads it, fills in
+what you'd want to know, and puts it on your Google Calendar once you say so.
+
+![The first screen](docs/welcome.png)
+
+## How it works
+
+1. **Capture.** Press **⌘⇧2** from any app and drag over what you want, or
+   press **Capture** in the window. You can also drop or paste (**⌘V**) a
+   screenshot or photo you already have.
+2. **Check.** Schedru shows each event it found, with the time, place,
+   address and notes filled in. Edit anything it got wrong.
+3. **Add.** One press and the ticked events are on your Google Calendar.
+
+![Reviewing what it found](docs/review.png)
+
+**Nothing is added until you press Add.** Events it was sure about are
+ticked for you. Anything it had to fill in itself is marked **~** so you can
+check it; anything it couldn't work out is marked **!** and left unticked.
+
+The app opens with a 38-second tutorial that shows all of this
+(`syllabus_cal/app/web/media/tutorial.mp4`). You can replay it from the
+**⋯** menu.
+
+## Get the app (Mac)
+
+1. **Download it.** On this repository's **Actions** tab, open the newest
+   **Mac** run with a green tick, scroll to **Artifacts**, and download
+   **Schedru-AppleSilicon** (Macs with an M-series chip) or **Schedru-Intel**.
+   Not sure which? Apple menu → About This Mac: "Chip: Apple M…" means Apple
+   Silicon.
+2. **Install it.** Open the download, open `Schedru-….dmg`, and drag
+   **Schedru** onto **Applications**.
+3. **Open it the first time.** macOS will refuse, saying it can't verify the
+   app — that's what it says about every app that hasn't paid Apple for a
+   developer certificate. Open **System Settings → Privacy & Security**,
+   scroll down to *"Schedru" was blocked…*, press **Open Anyway**, and
+   confirm. You only do this once.
+4. **Follow the window.** It asks for two things, once each (see the next
+   section), plays the tutorial, and then you're at the capture screen.
+5. **The first capture** makes macOS ask for **Screen Recording**
+   permission. Schedru's window explains the three clicks. Until you've done
+   that, dropping and pasting screenshots still works.
+
+Closing the window leaves Schedru running in the Dock so **⌘⇧2** keeps
+working; click the Dock icon to bring the window back, **⌘Q** to quit.
+
+## Two things only you can supply
+
+Both are tied to your own accounts, so nobody can create them for you. The
+app asks for each in its own window; neither needs a terminal.
+
+1. **A Claude API key**, from
+   [console.anthropic.com](https://console.anthropic.com/settings/keys).
+   This is what reads the screenshots. Anthropic bills it per use, separately
+   from any Claude subscription: about **1–2 cents per screenshot**. Paste it
+   into the app when asked; the app checks it works before saving it.
+2. **A Google credentials file**, from Google Cloud. This is what lets *your
+   copy* of Schedru touch *your* calendar. [`SETUP.md`](./SETUP.md) walks
+   through making one from zero (about ten minutes, free, once). If you set
+   up an earlier version, you already have it: it's the `credentials.json` in
+   that folder. Drop it onto the app when asked.
+
+After that, **Continue with Google** is all there is to signing in — it's
+the same button whether it's your first time or your hundredth. Google signs
+personal apps out about once a week; when that happens Schedru says so and
+the same button signs you back in.
 
 ## What it fills in
 
-Each event is written so it makes sense on its own when you look at it later:
+Each event is written to make sense on its own when you look at it later:
 
 - **Where**, findable in Maps: abbreviations expanded and an address added,
   e.g. `BSC 120 C` → `Busch Student Center, Room 120C, Busch Campus, Rutgers
   University, Piscataway, NJ`. It assumes Rutgers–New Brunswick unless the
-  image says otherwise (`HOME_CONTEXT` in `syllabus_cal/prompts/extract_events.py`).
+  image says otherwise (`HOME_CONTEXT` in
+  `syllabus_cal/prompts/extract_events.py`).
 - **When**: AM/PM, a missing end time, or a missing year are filled in from
-  context — a bare `7:30` on a club flyer is evening.
+  context — a bare `7:30` on a club flyer is the evening.
 - **What to know**: who's hosting, acronyms spelled out, cost, free food,
   what to bring, RSVP links, a QR code to scan — whatever the image shows.
 - **A title that stands alone**: `Rutgers AI Club: Weekly Meeting`, not
   `Weekly Meeting`.
+- **Repeats** as one repeating event (`Tue/Thu 9:50` is one event, not thirty).
 
-Everything it filled in rather than read is listed with a `~` at the
-confirmation step and again in the event's description, so a wrong guess is
-easy to spot.
+Everything it filled in rather than read is also listed in the event's
+description on your calendar, so a wrong guess is easy to spot later.
 
-## Status: complete (all 5 build steps)
+## Running from this folder instead
 
-This is a **command-line tool**, not a windowed app — you run it from a
-terminal. The launcher scripts below get you there with a double-click.
+You can run the same app straight from this folder, on any system with
+**Python 3.11 or newer** ([python.org/downloads](https://www.python.org/downloads/)):
 
-## Two things you must supply
+- **macOS:** double-click `start.command`. (The first time, macOS blocks it
+  the same way it blocks the app: System Settings → Privacy & Security →
+  **Open Anyway**.) The first run installs what it needs, then the Schedru
+  window opens. A Terminal window stays open behind it; closing that closes
+  Schedru.
+- **Windows:** double-click `start.bat`. Schedru opens as a tab in your
+  browser. Everything works there except capturing from the screen — drop,
+  paste or choose a screenshot instead. (A proper Windows app is not built
+  yet.)
 
-Neither can be created for you; both are tied to your own accounts.
+Run this way, your key and Google files live in this folder, exactly where
+earlier versions kept them, so an existing setup carries straight over.
 
-1. **An Anthropic API key** — from
-   [console.anthropic.com](https://console.anthropic.com). This is a paid
-   API, billed per use, separate from any Claude subscription. Goes in
-   `.env`.
-2. **`credentials.json`** — from Google Cloud Console. Follow
-   [`SETUP.md`](./SETUP.md), which walks through it from zero.
-
-Without #1 nothing runs at all. Without #2 you can still use `--dry-run` to
-extract events; you just can't write them to a calendar.
-
-## Getting started
-
-You need **Python 3.11 or newer** first, from
-[python.org/downloads](https://www.python.org/downloads/).
-
-**The easy way:** double-click `start.command` (macOS) or `start.bat`
-(Windows). First run installs everything and creates `.env` for your API
-key. Run it again after pasting the key in.
-
-### macOS
-
-macOS quarantines anything downloaded from the internet, so double-clicking
-`start.command` the first time is likely to be blocked with *"cannot be
-opened because it is from an unidentified developer"* or *"Apple could not
-verify it is free of malware"*. Two ways past it:
-
-- **Right-click** `start.command` → **Open** → click **Open** in the dialog.
-  (Right-click matters; a plain double-click doesn't offer the bypass.)
-- Or open Terminal and run this once, which clears the quarantine flag,
-  makes sure the file is executable, and starts it:
-
-  ```
-  cd ~/Downloads/syllabus_cal && xattr -dr com.apple.quarantine . && chmod +x start.command && ./start.command
-  ```
-
-Don't use the Python that macOS offers via the Xcode command line tools —
-it's 3.9, which is too old. Install from python.org instead. (The launcher
-will tell you if you hit this.)
-
-### Windows
-
-Tick **"Add python.exe to PATH"** on the installer's first screen. If the
-launcher says Python wasn't found even though you installed it, Windows'
-Microsoft Store shortcut is shadowing it: turn off `python.exe` and
-`python3.exe` under Settings → Apps → Advanced app settings → App
-execution aliases.
-
-**The manual way:**
+The original terminal version is still here:
 
 ```
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env      # then paste your ANTHROPIC_API_KEY into it
-python -m syllabus_cal    # tutorial + Google sign-in prompt
+bash start.command --terminal                             # the old guided flow
+python -m syllabus_cal parse ./screenshot.png             # one image
+python -m syllabus_cal parse ./screenshot.png --dry-run   # read only, never writes
+python -m syllabus_cal auth --test-event                  # sign in + one throwaway event
 ```
 
-## Usage
+## Where your things are kept
 
-```
-python -m syllabus_cal                                    # tutorial, offers sign-in
-python -m syllabus_cal parse ./screenshot.png             # the main flow
-python -m syllabus_cal parse ./screenshot.png --dry-run   # extract only, never writes
-python -m syllabus_cal auth                               # Google sign-in
-python -m syllabus_cal auth --test-event                  # sign-in + one throwaway event
-```
+| | The Mac app | Run from this folder |
+|---|---|---|
+| Claude key (`.env`) | `~/Library/Application Support/Schedru/` | this folder |
+| Google files (`credentials.json`, `token.json`) | same | this folder |
+| If something goes wrong (`schedru.log`) | same | printed in the terminal |
 
-Double-clicking the launcher runs the first line: it checks Google Calendar
-is connected (signing you in if needed), shows **Connected to Google
-Calendar:** and the account, then asks you to drag in a screenshot. Type
-`switch` there to use a different Google account.
+The key and the Google sign-in are saved readable only by you, are never
+committed (see `.gitignore`), and go nowhere except Anthropic and Google
+respectively. Screenshots are sent to Anthropic to be read and are deleted
+from this computer when you finish with them.
 
-`parse` reads the image, shows what it found grouped by confidence, walks
-you through each event with **(a)dd / (e)dit / (s)kip**, then writes only
-what you approved and prints a link to each one.
-
-`--semester-start` / `--semester-end` (YYYY-MM-DD) are optional; they help
-the model resolve recurring "until" dates.
-
-**Nothing is written without an explicit yes.** Events whose gaps it could
-fill in sensibly (`~`) default to *add*. Events with something it genuinely
-couldn't work out (`!`, or confidence below 0.8) default to *skip*, so
-holding Enter through the list never adds a real guess.
-
-Google signs you out about **once a week** — a limit on personal apps in
-Google's "Testing" mode (see SETUP.md 3.8). The app notices, says so, and
-asks to sign in again; press Enter and pick your account.
-
-If a write fails partway through a batch, the summary lists exactly which
-events landed and which didn't — re-run and skip the ones already created
-rather than getting duplicates.
-
-Every event created carries `extendedProperties.private.created_by =
-"syllabus_cal"`, so your test data is easy to find and bulk-delete later.
+Every event Schedru creates is tagged
+`extendedProperties.private.created_by = "syllabus_cal"`, so they can be
+found and bulk-deleted later without touching anything else.
 
 ## What's verified, and what isn't
 
-Automated tests cover the schema, the RRULE builder (including the DST
-boundary), event-body construction (addresses, overnight events), the
-confirmation UI, Google sign-in and its weekly expiry, plain-language
-handling of every Anthropic API failure, image preparation (HEIC, rotated
-phone photos), first-run setup, and the full parse → confirm → write path —
-with the Anthropic and Google calls faked.
+**Checked on real Macs, automatically, on every change** (GitHub's macOS
+machines; `tools/mac_e2e.py` posts real keyboard and mouse events):
 
-**Never exercised against the real services**: a real Claude reply, the
-browser OAuth round-trip, and an actual write landing on a real Google
-calendar. Those need your accounts, so the first real run is the first real
-test. Start with `auth --test-event` before trusting it with a full syllabus.
+- The packaged `Schedru.app` builds, is recognised by macOS as "Schedru",
+  and carries everything the real engine needs (`--self-check`).
+- The window opens, the tutorial video plays, setup can be clicked through.
+- **⌘⇧2 from another app** starts a capture; dragging a region produces
+  exactly that region; the result comes back in the window, in front.
+- The **Capture** button hides the window first and brings it back after.
+- **Esc** cancels cleanly. **⌘V** reads a pasted image.
+- Closing the window keeps the shortcut working; the Dock icon reopens it;
+  **⌘Q** quits.
+- Opened like a double-click *without* Screen Recording permission, it asks
+  for permission instead of taking a useless screenshot.
 
-**Neither launcher has run on its real OS** — this was built on Linux, so
-`start.bat` has never seen `cmd.exe`, and `start.command` has been run
-under bash on Linux but never on macOS (where Gatekeeper quarantine, which
-can't be reproduced here, is the likely first-run snag). That's why setup
-logic lives in `bootstrap.py` (tested) rather than in the launchers,
-leaving them doing only "find a working Python, run that file".
+Those runs use a stand-in for Claude and Google, so they need no accounts.
 
-## What to check on a first real run
+**Checked with unit tests** (about 400): the rules for what gets written and
+when, sign-in and every way it fails, edits, the local server's security
+checks, image handling (HEIC, rotated photos), repeating events across
+daylight-saving changes, and first-run setup.
 
-**Extraction.** Run `parse --dry-run` against a real screenshot of yours (a
-syllabus page, a club flyer, a schedule email) and check:
+**Checked against the real Claude API** only when the *Real API check*
+workflow is run by hand (it costs a few cents): three sample screenshots
+are read for real and the results compared with what a person would expect.
 
-- Does the table it prints match what's actually in the image?
-- Are recurring class times resolved into one row with a recurrence
-  pattern, instead of one row per class meeting?
-- Is everything it filled in listed with a `~`, and does each one look
-  right — especially AM/PM and expanded building names?
-- Does the "Where" column name a real place you could find on a map?
+**Not yet checked by anything but you:**
 
-If something's wrong, the fix is almost always in
-`syllabus_cal/prompts/extract_events.py` (the vision prompt) rather than in
-the pipeline code — that's why the prompt was kept as a standalone module.
-
-**Google auth.** After completing `SETUP.md`:
-
-- `python -m syllabus_cal auth` — should open your browser to Google's
-  account picker and finish with `Connected to Google Calendar:` and the
-  account you picked.
-- `python -m syllabus_cal auth --test-event` — should additionally print a
-  link to a real event on your calendar, tomorrow at 9:00–9:30 AM. Open the
-  link and confirm it's actually there, then delete it.
-- Delete or rename `token.json` and launch again — it should say you're not
-  signed in and offer to sign in, never show a stack trace.
-
-**The full flow.** `parse` a real screenshot without `--dry-run`, confirm
-one or two events, and check they appear on your calendar correctly —
-especially a recurring class: it should be **one** repeating event, not
-fifteen separate ones.
+- **Signing in to a real Google account and an event landing on a real
+  calendar.** That needs your account. The code path is the same one the
+  terminal version uses, but the first real sign-in is the first real test.
+- **The first-open steps on your Mac** (the "Open Anyway" prompt, the Screen
+  Recording switch). They can't be automated; the instructions above follow
+  Apple's documented behaviour.
+- **Dragging a file in from Finder.** The drop handling is tested, but not a
+  physical drag. Paste and *Choose a file…* are tested end to end.
+- **macOS versions other than 26 (Apple Silicon) and 15 (Intel).** The app
+  is built to run on macOS 11 and later.
 
 ## Development
 
 ```
-pip install pytest && python -m pytest tests/ -q
+pip install -r requirements.txt pytest
+python -m pytest tests/ -q              # unit tests
+python -m syllabus_cal.app --demo       # the app with a stand-in engine
+python -m syllabus_cal.app --self-check # is everything it needs present?
+node tools/ui_shots.mjs                 # walk every screen in a browser, photograph each
+node tools/make_tutorial.mjs            # re-render the tutorial video
+python tools/mac_e2e.py --source        # (Mac only) drive the real window
+pyinstaller packaging/Schedru.spec      # (Mac only) build dist/Schedru.app
 ```
+
+How it fits together: `syllabus_cal/` is the engine (Claude vision → events →
+Google Calendar). `syllabus_cal/app/` puts a window on it: `service.py` is
+what the app can do, `server.py` offers that to the page over a local,
+token-guarded connection, `web/` is the page, and `shell.py` opens it in a
+native window with the global shortcut. If Claude reads something wrong, the
+fix is almost always in `syllabus_cal/prompts/extract_events.py`.
