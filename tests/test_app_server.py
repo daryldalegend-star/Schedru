@@ -592,3 +592,35 @@ def test_a_crash_in_a_handler_is_a_500_not_a_hung_request(stack):
     status, body = client.json("POST", "/api/debug/boom", {})
     assert status == 500 and body["error"]["code"] == "internal"
     assert client.json("GET", "/api/status")[0] == 200  # still serving
+
+
+def test_starting_never_looks_up_its_own_hostname(tmp_path, monkeypatch):
+    """On macOS that lookup can take half a minute, and it happened at every
+    launch until the first run on a real Mac showed it."""
+    import socket
+
+    def too_slow(*args, **kwargs):
+        raise AssertionError("the server asked DNS for its own name")
+
+    monkeypatch.setattr(socket, "getfqdn", too_slow)
+    monkeypatch.setattr(socket, "gethostbyaddr", too_slow)
+
+    data = tmp_path / "data"
+    data.mkdir()
+    service = Service(
+        DemoEngine(data, delay=0.01),
+        Settings(data, environ={}),
+        workdir=tmp_path / "work",
+        capture_tool=ScreenCapture(platform="test", binary=str(tmp_path / "missing")),
+    )
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text("ok")
+    server = AppServer(service, web)
+    server.start()
+    try:
+        response, body = Client(server).get("/", token=None)
+        assert response.status == 200 and body == b"ok"
+    finally:
+        server.stop()
+        service.close()

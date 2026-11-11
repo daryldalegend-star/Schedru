@@ -16,6 +16,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import socketserver
 import threading
 import time
 import webbrowser
@@ -160,6 +161,19 @@ class _RedirectHandler(BaseHTTPRequestHandler):
         pass  # the redirect carries a one-time code; keep it out of any log
 
 
+class _RedirectServer(HTTPServer):
+    redirect_path: str | None = None
+
+    def server_bind(self) -> None:
+        # Skip HTTPServer's reverse-DNS lookup of its own address, which can
+        # stall for many seconds on macOS (see app/server.py). Here it would
+        # be a long pause between pressing the button and the browser opening.
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = port
+
+
 class BrowserSignIn:
     """One attempt at signing in. start(), then wait() (from another thread if
     you like); cancel() makes a pending wait() give up."""
@@ -176,21 +190,20 @@ class BrowserSignIn:
         self._open_browser = open_browser
         self._timeout = timeout
         self._host = host
-        self._server: HTTPServer | None = None
+        self._server: _RedirectServer | None = None
         self._cancelled = threading.Event()
         self.auth_url: str | None = None
         self.browser_opened = False
 
     def start(self) -> str:
         try:
-            server = HTTPServer((self._host, 0), _RedirectHandler)
+            server = _RedirectServer((self._host, 0), _RedirectHandler)
         except OSError as exc:
             raise SignInError(
                 "Schedru couldn't start the sign-in on this computer "
                 f"({exc.strerror or exc}). Close other apps that might be blocking it "
                 "and try again."
             ) from exc
-        server.redirect_path = None  # type: ignore[attr-defined]
         server.timeout = 0.25
         self._server = server
 
@@ -226,7 +239,7 @@ class BrowserSignIn:
         server = self._server
         deadline = time.monotonic() + self._timeout
         try:
-            while server.redirect_path is None:  # type: ignore[attr-defined]
+            while server.redirect_path is None:
                 if self._cancelled.is_set():
                     raise SignInCancelled("Sign-in cancelled.")
                 if time.monotonic() >= deadline:
@@ -235,7 +248,7 @@ class BrowserSignIn:
                         "Press Continue with Google to try again."
                     )
                 server.handle_request()  # returns after server.timeout if nothing arrives
-            path: str = server.redirect_path  # type: ignore[attr-defined]
+            path: str = server.redirect_path
         finally:
             server.server_close()
             self._server = None

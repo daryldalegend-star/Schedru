@@ -24,6 +24,7 @@ import json
 import mimetypes
 import re
 import secrets
+import socketserver
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -358,6 +359,16 @@ class _Handler(BaseHTTPRequestHandler):
 class _Httpd(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        # HTTPServer.server_bind() looks up the name of its own address
+        # (socket.getfqdn), a reverse-DNS query that macOS can take half a
+        # minute to give up on. That was the app's entire start-up time on the
+        # first real Mac it ran on. The name is never used, so don't ask.
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = port
 
     service: Service
     web_dir: Path

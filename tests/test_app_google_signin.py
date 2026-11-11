@@ -355,3 +355,16 @@ def test_build_flow_explains_a_missing_or_wrong_file(tmp_path):
     with pytest.raises(SignInError) as caught:
         build_flow(tmp_path / "credentials.json")
     assert "Desktop app" in str(caught.value)
+
+
+def test_starting_a_sign_in_never_looks_up_its_own_hostname(monkeypatch):
+    def too_slow(*args, **kwargs):
+        raise AssertionError("the redirect listener asked DNS for its own name")
+
+    monkeypatch.setattr(socket, "getfqdn", too_slow)
+    monkeypatch.setattr(socket, "gethostbyaddr", too_slow)
+
+    attempt, flow, _ = start()
+    outcome = run(attempt)
+    assert get(flow.redirect_uri + "?code=abc")[0] == 200
+    assert outcome() is flow.credentials

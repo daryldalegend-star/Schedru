@@ -10,6 +10,11 @@ pillow-heif>=0.15.0
 # Windows ships no IANA timezone database, so zoneinfo.ZoneInfo() raises at
 # import there without this. Unused on macOS/Linux, which have a system one.
 tzdata>=2024.1
+# cryptography (which google-auth needs) stopped publishing ready-built
+# packages for Intel Macs after version 48. Without this pin an Intel Mac has
+# to compile it, which needs developer tools most people don't have -- and a
+# compiled copy breaks the packaged app by clashing with Python's own OpenSSL.
+cryptography<49; sys_platform == "darwin" and platform_machine == "x86_64"
 # The app window and the global shortcut. macOS only for now: elsewhere the
 # app falls back to opening in the default browser.
 pywebview>=6.2; sys_platform == "darwin"
