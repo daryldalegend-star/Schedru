@@ -152,10 +152,13 @@ machines; `tools/mac_e2e.py` posts real keyboard and mouse events):
 
 Those runs use a stand-in for Claude and Google, so they need no accounts.
 
-**Checked with unit tests** (about 400): the rules for what gets written and
-when, sign-in and every way it fails, edits, the local server's security
-checks, image handling (HEIC, rotated photos), repeating events across
-daylight-saving changes, and first-run setup.
+**Checked with unit tests** (over 400): the rules for what gets written and
+when, edits, the local server's security checks, image handling (HEIC,
+rotated photos), repeating events across daylight-saving changes, and
+first-run setup. Two groups go further than stand-ins: the whole Google
+sign-in exchange, and the calendar requests, are run through Google's real
+client libraries against a pretend Google on the same machine, so the
+requests that would go out are the ones being checked.
 
 **Checked against the real Claude API** only when the *Real API check*
 workflow is run by hand (it costs a few cents): three sample screenshots
@@ -164,8 +167,8 @@ are read for real and the results compared with what a person would expect.
 **Not yet checked by anything but you:**
 
 - **Signing in to a real Google account and an event landing on a real
-  calendar.** That needs your account. The code path is the same one the
-  terminal version uses, but the first real sign-in is the first real test.
+  calendar.** That needs your account. Everything up to Google's own servers
+  is tested, but the first real sign-in is the first real test.
 - **The first-open steps on your Mac** (the "Open Anyway" prompt, the Screen
   Recording switch). They can't be automated; the instructions above follow
   Apple's documented behaviour.
