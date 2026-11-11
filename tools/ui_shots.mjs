@@ -89,7 +89,7 @@ async function main() {
 
   try {
     // A stand-in screenshot: any real image does, the demo engine ignores it.
-    const flyerSource = join(ROOT, "syllabus_cal/app/web/media/tutorial-flyer.png");
+    const flyerSource = join(ROOT, "tests/fixtures/screens/flyer.png");
     if (existsSync(flyerSource)) writeFileSync(flyer, readFileSync(flyerSource));
     else {
       const page = await browser.newPage({ viewport: { width: 520, height: 640 } });
