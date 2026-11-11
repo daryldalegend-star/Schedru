@@ -720,7 +720,9 @@
     const input = h("input", {
       class: `input mono ${ui.keyError ? "bad" : ""}`.trim(),
       id: "key-input",
-      type: "password",
+      // Shown, not dotted out: the usual mistake is pasting the shortened
+      // preview of a key, and that should be visible at a glance.
+      type: "text",
       placeholder: "sk-ant-…",
       autocomplete: "off",
       autocapitalize: "off",

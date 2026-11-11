@@ -46,8 +46,6 @@ class RealEngine:
         self.data_dir = Path(data_dir)
         calendar_client.CREDENTIALS_PATH = self.data_dir / "credentials.json"
         calendar_client.TOKEN_PATH = self.data_dir / "token.json"
-        self._calendar: Any = None
-        self._lock = threading.Lock()
 
     # ---- Claude --------------------------------------------------------
 
@@ -116,9 +114,7 @@ class RealEngine:
 
     def connect(self) -> str:
         """The calendar's name, after proving the saved sign-in still works."""
-        service, name = calendar_client.connect()
-        with self._lock:
-            self._calendar = service
+        _, name = calendar_client.connect()
         return name
 
     def begin_sign_in(self, open_browser: Callable[[str], Any] | None = None) -> Any:
@@ -132,20 +128,18 @@ class RealEngine:
         return self.connect()
 
     def sign_out(self) -> None:
-        with self._lock:
-            self._calendar = None
         try:
             calendar_client.TOKEN_PATH.unlink()
         except FileNotFoundError:
             pass
 
     def add(self, events: list[ExtractedEvent]) -> list[WriteOutcome]:
-        with self._lock:
-            service = self._calendar
-        if service is None:
-            self.connect()
-            with self._lock:
-                service = self._calendar
+        # Connect afresh rather than reuse a client from earlier: Google ends
+        # these sign-ins after a week, and an app left open can easily outlive
+        # one. Checking first turns "expired" into a clear AuthError (sign in
+        # again, your review is kept) instead of every event failing with a
+        # token error. It costs one small request.
+        service, _ = calendar_client.connect()
         return calendar_client.write_events(service, events)
 
 
