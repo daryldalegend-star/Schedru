@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="schedru-token" content="__SCHEDRU_TOKEN__">
+<title>Schedru</title>
+<link rel="icon" href="/icon.png">
+<link rel="preload" href="/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header id="topbar" class="topbar" hidden></header>
+<main id="app" class="stage" tabindex="-1"></main>
+<div id="sheet-root"></div>
+<div id="drop-veil" class="drop-veil" hidden>
+  <div class="drop-veil-card">
+    <svg class="icon icon-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+    <strong id="drop-veil-text">Drop it to read it</strong>
+  </div>
+</div>
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+<input id="file-image" type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,.png,.jpg,.jpeg,.webp,.heic,.heif" hidden>
+<input id="file-json" type="file" accept="application/json,.json" hidden>
+<noscript><p style="padding:2rem">Schedru needs JavaScript to run.</p></noscript>
+<script src="/app.js"></script>
+</body>
+</html>

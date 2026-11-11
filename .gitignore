@@ -9,3 +9,7 @@ venv/
 *.egg-info/
 .pytest_cache/
 .DS_Store
+ui-shots/
+build/
+dist/
+node_modules/
