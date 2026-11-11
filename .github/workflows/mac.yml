@@ -1,8 +1,8 @@
 name: Mac
 
-# Runs the tests on a real Mac. Nothing here can be exercised on the Linux
-# machine the app is developed on, which is how a broken launcher once
-# shipped untested.
+# Everything that can only be known on a real Mac is checked here: the unit
+# tests, then the app itself driven with real keyboard and mouse events, then
+# the packaged Schedru.app built, driven the same way, and offered for download.
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python }})
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -44,14 +44,74 @@ jobs:
       - name: Unit tests
         run: python -m pytest tests/ -q
 
-      - name: Platform probe
-        run: python tools/mac_probe.py
-        env:
-          PROBE_OUT: probe-out
+      - name: Self-check
+        run: python -m syllabus_cal.app --self-check
+
+      - name: Use the app the way a person would
+        run: python tools/mac_e2e.py --source
+
+  build:
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.optional }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: AppleSilicon
+            optional: false
+          - os: macos-15-intel
+            label: Intel
+            optional: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Machine
+        run: |
+          sw_vers
+          uname -m
+          python --version
+
+      - name: Install
+        run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build Schedru.app
+        run: pyinstaller packaging/Schedru.spec --noconfirm
+
+      - name: Sign (ad hoc) and inspect
+        run: |
+          codesign --force --deep --sign - dist/Schedru.app
+          codesign --verify --deep --strict dist/Schedru.app
+          du -sh dist/Schedru.app
+          file dist/Schedru.app/Contents/MacOS/Schedru
+          plutil -p dist/Schedru.app/Contents/Info.plist
+          vtool -show-build dist/Schedru.app/Contents/MacOS/Schedru || true
+
+      - name: Self-check the packaged app
+        run: dist/Schedru.app/Contents/MacOS/Schedru --self-check
+
+      - name: Use the packaged app the way a person would
+        run: python tools/mac_e2e.py --app dist/Schedru.app
+
+      - name: Make the disk image
+        run: |
+          codesign --verify --deep --strict dist/Schedru.app
+          VERSION=$(python -c "from syllabus_cal.app import __version__; print(__version__)")
+          mkdir dmg
+          ditto dist/Schedru.app dmg/Schedru.app
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname Schedru -srcfolder dmg -ov -format UDZO "Schedru-$VERSION-${{ matrix.label }}.dmg"
+          ls -la *.dmg
 
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: probe-out-py${{ matrix.python }}
-          path: probe-out
-          if-no-files-found: ignore
+          name: Schedru-${{ matrix.label }}
+          path: Schedru-*.dmg
+          if-no-files-found: error
+          retention-days: 90

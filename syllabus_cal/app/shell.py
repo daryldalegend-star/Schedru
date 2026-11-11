@@ -217,6 +217,60 @@ class MacWindow:
         return False
 
 
+def _evaluate(window: Any, expression: str, timeout: float = 10.0) -> Any:
+    """The value of a JavaScript expression in the window's page (tests only).
+
+    Goes to WebKit directly rather than through pywebview's evaluate_js, which
+    wraps the script in eval() -- and the page's security policy forbids eval.
+    """
+    from PyObjCTools import AppHelper
+    from webview.platforms.cocoa import BrowserView
+
+    done = threading.Event()
+    box: dict[str, Any] = {}
+
+    def finished(result: Any, error: Any) -> None:
+        box["result"] = result
+        box["error"] = None if error is None else str(error)
+        done.set()
+
+    script = f"JSON.stringify((function () {{ return (\n{expression}\n); }})())"
+
+    def run() -> None:
+        BrowserView.instances[window.uid].webview.evaluateJavaScript_completionHandler_(
+            script, finished
+        )
+
+    AppHelper.callAfter(run)
+    if not done.wait(timeout):
+        raise TimeoutError("the page didn't answer")
+    if box["error"]:
+        raise RuntimeError(box["error"])
+    return None if box["result"] is None else json.loads(box["result"])
+
+
+def _focus_page(window: Any) -> bool:
+    from webview.platforms.cocoa import BrowserView
+
+    view = BrowserView.instances[window.uid]
+    return bool(view.window.makeFirstResponder_(view.webview))
+
+
+def _identity() -> dict[str, Any]:
+    """How macOS sees this process. The tests check the packaged app really is
+    "Schedru" rather than an anonymous Python."""
+    import AppKit
+
+    running = AppKit.NSRunningApplication.currentApplication()
+    bundle = AppKit.NSBundle.mainBundle()
+    return {
+        "name": str(running.localizedName() or ""),
+        "bundle_id": str(bundle.bundleIdentifier() or ""),
+        "bundle_path": str(bundle.bundlePath() or ""),
+        "pid": os.getpid(),
+    }
+
+
 def _prefers_dark() -> bool:
     try:
         from Foundation import NSUserDefaults
@@ -312,10 +366,16 @@ def run_in_window(app: App) -> int:
     window.events.closing += controller.on_closing
 
     if os.environ.get(DEBUG_HOOKS_ENV) == "1":
-        app.server.debug_hooks["eval"] = lambda body: window.evaluate_js(str(body.get("js", "")))
+        app.server.debug_hooks["eval"] = lambda body: _evaluate(window, str(body.get("js", "")))
         app.server.debug_hooks["window"] = lambda body: controller.state()
+        app.server.debug_hooks["show"] = lambda body: controller.show()
+        app.server.debug_hooks["focus"] = lambda body: _on_main(lambda: _focus_page(window))
+        app.server.debug_hooks["identity"] = lambda body: _on_main(_identity)
 
     def after_launch() -> None:
+        # Runs on its own thread, started before the window exists.
+        window.events.shown.wait(30)
+
         def on_main_thread() -> None:
             import AppKit
 
@@ -353,12 +413,169 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--port", type=int, default=0, help="Port to listen on (default: any free one)")
     parser.add_argument("--demo", action="store_true", help="Canned results; no network or accounts")
+    parser.add_argument(
+        "--self-check",
+        action="store_true",
+        help="Check that everything the app needs is present, print a report, and exit",
+    )
     parser.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     return parser
 
 
+def self_check() -> int:
+    """Exercise every outside dependency far enough to prove it's really here.
+
+    The walk-through tests run on the demo engine, which never touches the
+    Anthropic or Google libraries, so a packaged app could pass them while
+    missing a file the real engine needs. This loads the real ones: it builds
+    the Calendar client from its bundled API description, prepares a Google
+    sign-in URL, round-trips images, and so on. Nothing here uses the network.
+    """
+    report: dict[str, Any] = {}
+
+    def probe(name: str, function: Callable[[], Any]) -> None:
+        try:
+            report[name] = function()
+        except Exception as exc:
+            report[name] = f"FAILED: {type(exc).__name__}: {exc}"
+
+    def web_files() -> list[str]:
+        root = web_dir()
+        wanted = ["index.html", "app.css", "app.js", "icon.png", "fonts/fraunces.woff2",
+                  "media/tutorial.mp4", "media/tutorial-poster.jpg"]
+        missing = [name for name in wanted if not (root / name).is_file()]
+        if missing:
+            raise FileNotFoundError(", ".join(missing))
+        return wanted
+
+    def anthropic_client() -> str:
+        import anthropic
+
+        client = anthropic.Anthropic(api_key="sk-ant-self-check", max_retries=0)
+        assert client.messages is not None and client.models is not None
+        return anthropic.__version__
+
+    def calendar_client() -> str:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        service = build("calendar", "v3", credentials=Credentials(token="self-check"))
+        request = service.events().insert(calendarId="primary", body={"summary": "x"})
+        return request.methodId
+
+    def google_sign_in() -> str:
+        from google_auth_oauthlib.flow import InstalledAppFlow
+
+        from ..calendar_client import SCOPES
+
+        flow = InstalledAppFlow.from_client_config(
+            {
+                "installed": {
+                    "client_id": "self-check.apps.googleusercontent.com",
+                    "client_secret": "self-check",
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                }
+            },
+            SCOPES,
+        )
+        flow.redirect_uri = "http://localhost:1/"
+        url, _ = flow.authorization_url(prompt="select_account consent")
+        return url.split("?")[0]
+
+    def images() -> str:
+        import io
+
+        from PIL import Image
+
+        from ..vision import load_and_prepare_image  # noqa: F401  (registers HEIC)
+
+        source = Image.new("RGB", (64, 48), (200, 16, 46))
+        formats = []
+        for name in ("PNG", "JPEG", "WEBP", "HEIF"):
+            buffer = io.BytesIO()
+            source.save(buffer, format=name)
+            with Image.open(io.BytesIO(buffer.getvalue())) as reopened:
+                reopened.load()
+                formats.append(reopened.format)
+        return " ".join(formats)
+
+    def schema() -> str:
+        from .engine import demo_events
+        from .describe import event_to_json
+
+        return event_to_json(demo_events()[0], "e1")["when_text"]
+
+    def time_zone() -> str:
+        from datetime import datetime
+
+        from ..rrule import DEFAULT_TZ
+
+        return datetime(2026, 11, 19, 19, 30, tzinfo=DEFAULT_TZ).isoformat()
+
+    def certificates() -> int:
+        import ssl
+
+        import certifi
+
+        ssl.create_default_context(cafile=certifi.where())
+        return Path(certifi.where()).stat().st_size
+
+    def window_library() -> str:
+        if sys.platform != "darwin":
+            return "not a Mac: the browser is used instead"
+        import quickmachotkey  # noqa: F401
+        import webview
+        import webview.platforms.cocoa  # noqa: F401
+
+        return getattr(webview, "__version__", "present")
+
+    probe("version", lambda: __version__)
+    probe("python", lambda: sys.version.split()[0])
+    probe("frozen", lambda: bool(getattr(sys, "frozen", False)))
+    probe("web files", web_files)
+    probe("anthropic", anthropic_client)
+    probe("google calendar", calendar_client)
+    probe("google sign-in", google_sign_in)
+    probe("images", images)
+    probe("events", schema)
+    probe("time zone", time_zone)
+    probe("certificates", certificates)
+    probe("window", window_library)
+
+    print(json.dumps(report, indent=2, default=str))
+    failed = [name for name, value in report.items() if isinstance(value, str) and value.startswith("FAILED")]
+    return 1 if failed else 0
+
+
+def _log_problems_to_file() -> None:
+    """The packaged app has no terminal to print to, so anything that goes
+    wrong is written to schedru.log in the data folder instead."""
+    import logging
+
+    try:
+        logging.basicConfig(
+            filename=str(data_dir() / "schedru.log"),
+            level=logging.WARNING,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+    except OSError:
+        return
+
+    def record(kind: type, value: BaseException, trace: Any) -> None:
+        logging.getLogger("schedru").error("Unhandled error", exc_info=(kind, value, trace))
+
+    sys.excepthook = record
+    threading.excepthook = lambda args: record(args.exc_type, args.exc_value, args.exc_traceback)
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    # parse_known_args: macOS can hand a double-clicked app arguments of its own.
+    args, _ = build_parser().parse_known_args(argv)
+    if args.self_check:
+        return self_check()
+    if getattr(sys, "frozen", False):
+        _log_problems_to_file()
     app = App(engine_kind="demo" if args.demo else None, port=args.port)
 
     if not args.browser and sys.platform == "darwin":
